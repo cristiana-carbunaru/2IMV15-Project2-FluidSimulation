@@ -1,0 +1,12 @@
+Windows build notes for Project 2:
+
+Recommended: use CLion with MinGW or Visual Studio and configure freeglut/OpenGL.
+The repository keeps the Project 1 Windows include/lib/bin folders for freeglut and libpng.
+
+CLion/CMake build:
+1. Open this folder in CLion.
+2. Make sure the freeglut and OpenGL libraries are visible to your selected toolchain.
+3. Build the `project2` target.
+4. Run the executable from the `bin` folder. Keep the DLLs in `bin` next to the executable.
+
+If using MinGW manually, adapt the Makefile Windows branch if your library paths differ.

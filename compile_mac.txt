@@ -1,0 +1,24 @@
+macOS build notes for Project 2:
+
+Install Xcode command line tools and, if needed, libpng:
+
+    xcode-select --install
+    brew install libpng
+
+CLion/CMake build:
+
+    Open this folder in CLion and build the `project2` target.
+
+Command-line CMake build:
+
+    mkdir -p build
+    cd build
+    cmake ..
+    cmake --build .
+    ../bin/project2
+
+Makefile build:
+
+    make clean
+    make
+    ./bin/project2
