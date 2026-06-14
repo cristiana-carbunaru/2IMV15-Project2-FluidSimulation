@@ -7,11 +7,14 @@
 
 #include "FluidSolver2D.h"
 #include <cstdio>
+#include <chrono>
 
 #define FLUID_SWAP(a,b) { std::swap(a,b); }
 
 FluidSolver2D::FluidSolver2D()
-    : m_N(0), m_diffusion(0.0f), m_viscosity(0.0f), m_vorticityStrength(2.0f), m_useVorticity(true) {}
+    : m_N(0), m_diffusion(0.0f), m_viscosity(0.0f), m_vorticityStrength(2.0f), m_useVorticity(true),
+      m_temperatureDiffusion(0.00002f), m_ambientTemperature(0.0f),
+      m_buoyancyAlpha(0.05f), m_buoyancyBeta(0.3f), m_useBuoyancy(true) {}
 
 FluidSolver2D::FluidSolver2D(int n) : FluidSolver2D() { resize(n); }
 
@@ -23,6 +26,7 @@ void FluidSolver2D::resize(int n) {
     m_u.assign(s, 0.0f);      m_v.assign(s, 0.0f);
     m_uPrev.assign(s, 0.0f);  m_vPrev.assign(s, 0.0f);
     m_density.assign(s, 0.0f); m_densityPrev.assign(s, 0.0f);
+    m_temperature.assign(s, m_ambientTemperature); m_temperaturePrev.assign(s, 0.0f);
     m_pressure.assign(s, 0.0f); m_divergence.assign(s, 0.0f);
     m_solidU.assign(s, 0.0f); m_solidV.assign(s, 0.0f);
     m_solid.assign(s, 0);
@@ -38,6 +42,8 @@ void FluidSolver2D::clear() {
     std::fill(m_vPrev.begin(), m_vPrev.end(), 0.0f);
     std::fill(m_density.begin(), m_density.end(), 0.0f);
     std::fill(m_densityPrev.begin(), m_densityPrev.end(), 0.0f);
+    std::fill(m_temperature.begin(), m_temperature.end(), m_ambientTemperature);
+    std::fill(m_temperaturePrev.begin(), m_temperaturePrev.end(), 0.0f);
     std::fill(m_pressure.begin(), m_pressure.end(), 0.0f);
     std::fill(m_divergence.begin(), m_divergence.end(), 0.0f);
 }
@@ -46,6 +52,7 @@ void FluidSolver2D::clearSources() {
     std::fill(m_uPrev.begin(), m_uPrev.end(), 0.0f);
     std::fill(m_vPrev.begin(), m_vPrev.end(), 0.0f);
     std::fill(m_densityPrev.begin(), m_densityPrev.end(), 0.0f);
+    std::fill(m_temperaturePrev.begin(), m_temperaturePrev.end(), 0.0f);
 }
 
 void FluidSolver2D::clearSolids() {
@@ -96,6 +103,19 @@ void FluidSolver2D::addVelocityAt(float x, float y, float amountU, float amountV
     for (int j = cj - radius; j <= cj + radius; ++j)
         for (int i = ci - radius; i <= ci + radius; ++i)
             addVelocityCell(i, j, amountU, amountV);
+}
+
+void FluidSolver2D::addTemperatureCell(int i, int j, float amount) {
+    if (i < 1 || i > m_N || j < 1 || j > m_N || isSolidCell(i, j)) return;
+    m_temperaturePrev[ix(i, j)] += amount;
+}
+
+void FluidSolver2D::addTemperatureAt(float x, float y, float amount, int radius) {
+    int ci = std::max(1, std::min(m_N, int(x * m_N) + 1));
+    int cj = std::max(1, std::min(m_N, int(y * m_N) + 1));
+    for (int j = cj - radius; j <= cj + radius; ++j)
+        for (int i = ci - radius; i <= ci + radius; ++i)
+            addTemperatureCell(i, j, amount);
 }
 
 void FluidSolver2D::setVerticalWall(int i, int j, bool blocked) {
@@ -390,7 +410,23 @@ void FluidSolver2D::project(std::vector<float>& u, std::vector<float>& v, std::v
     }
     setBoundary(1, u);
     setBoundary(2, v);
+    // Keep the solved pressure for the pressure visualization view.
+    m_pressure = p;
     applySolidVelocities();
+}
+
+// Scalar 2D vorticity at a cell centre. Reused by the curl visualization view;
+// the same expression drives applyVorticityConfinement.
+float FluidSolver2D::curl(int i, int j) const {
+    if (i < 1 || i > m_N || j < 1 || j > m_N) return 0.0f;
+    const float dvdx = 0.5f * (m_v[ix(i + 1, j)] - m_v[ix(i - 1, j)]);
+    const float dudy = 0.5f * (m_u[ix(i, j + 1)] - m_u[ix(i, j - 1)]);
+    return dvdx - dudy;
+}
+
+float FluidSolver2D::pressure(int i, int j) const {
+    if (i < 1 || i > m_N || j < 1 || j > m_N) return 0.0f;
+    return m_pressure[ix(i, j)];
 }
 
 // Vorticity confinement from Fedkiw, Stam, and Jensen (2001). In 2D the curl is
@@ -426,6 +462,27 @@ void FluidSolver2D::applyVorticityConfinement(float dt) {
     setBoundary(2, m_v);
 }
 
+// Thermal buoyancy (Fedkiw, Stam, and Jensen 2001, "Visual Simulation of Smoke").
+// They define a buoyancy force f_buoy = (-alpha*d + beta*(T - T_ambient)) * z,
+// where z points up. Here z is the +v (vertical) direction of the grid, so the
+// dense-smoke term -alpha*d pulls fluid down while the warm term beta*(T-Tamb)
+// pushes it up, making hot air rise. The force is added to the velocity field
+// before the diffuse/project velocity solve, exactly like the vorticity force.
+void FluidSolver2D::applyBuoyancy(float dt) {
+    if (!m_useBuoyancy) return;
+    if (m_buoyancyAlpha <= 0.0f && m_buoyancyBeta <= 0.0f) return;
+    for (int j = 1; j <= m_N; ++j) {
+        for (int i = 1; i <= m_N; ++i) {
+            if (isSolidCell(i, j)) continue;
+            const int k = ix(i, j);
+            const float f = -m_buoyancyAlpha * m_density[k]
+                            + m_buoyancyBeta * (m_temperature[k] - m_ambientTemperature);
+            m_v[k] += dt * f;
+        }
+    }
+    setBoundary(2, m_v);
+}
+
 // Keep occupied solid cells from accumulating smoke or arbitrary fluid velocity.
 // Their velocity is prescribed by the rigid body rasterization in FluidScene.
 void FluidSolver2D::applySolidVelocities() {
@@ -445,11 +502,15 @@ void FluidSolver2D::applySolidVelocities() {
 // vel_step()/dens_step(), with vorticity and solid velocity insertion before
 // the velocity solve so those forces affect the current frame.
 void FluidSolver2D::step(float dt) {
+    const auto t0 = std::chrono::high_resolution_clock::now();
     rebuildObjectWalls();
     addSource(m_u, m_uPrev, dt);
     addSource(m_v, m_vPrev, dt);
+    // Inject heat sources into the temperature field before it drives buoyancy.
+    addSource(m_temperature, m_temperaturePrev, dt);
     applySolidVelocities();
     applyVorticityConfinement(dt);
+    applyBuoyancy(dt);
 
     FLUID_SWAP(m_uPrev, m_u);
     diffuse(1, m_u, m_uPrev, m_viscosity, dt);
@@ -469,9 +530,27 @@ void FluidSolver2D::step(float dt) {
     FLUID_SWAP(m_densityPrev, m_density);
     advect(0, m_density, m_densityPrev, m_u, m_v, dt);
 
+    // Transport temperature with the same diffuse/advect path as density so the
+    // heat that drives buoyancy moves with the flow (the heat source was already
+    // added above, before applyBuoyancy).
+    FLUID_SWAP(m_temperaturePrev, m_temperature);
+    diffuse(0, m_temperature, m_temperaturePrev, m_temperatureDiffusion, dt);
+    FLUID_SWAP(m_temperaturePrev, m_temperature);
+    advect(0, m_temperature, m_temperaturePrev, m_u, m_v, dt);
+
     // Gentle dissipation keeps the real-time demo readable instead of saturating to white.
     for (float& d : m_density) d *= 0.997f;
+    // Newtonian cooling: relax temperature back toward ambient so plumes lose lift
+    // over time instead of accelerating forever.
+    for (float& t : m_temperature) t += (m_ambientTemperature - t) * 0.01f;
     clearSources();
+
+    const auto t1 = std::chrono::high_resolution_clock::now();
+    m_lastStepMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    ++m_timingSamples;
+    const double alpha = 0.05; // EMA: settles ~60 steps after a feature toggle.
+    m_avgStepMs = (m_timingSamples == 1) ? m_lastStepMs
+                                         : (1.0 - alpha) * m_avgStepMs + alpha * m_lastStepMs;
 }
 
 // Sample velocity at normalized coordinates [0,1]^2. Used by tracer particles,
@@ -486,4 +565,10 @@ float FluidSolver2D::sampleDensity(float x, float y) const {
     const float gx = std::max(0.5f, std::min(m_N + 0.5f, x * m_N + 0.5f));
     const float gy = std::max(0.5f, std::min(m_N + 0.5f, y * m_N + 0.5f));
     return bilinearSample(m_density, gx, gy);
+}
+
+float FluidSolver2D::sampleTemperature(float x, float y) const {
+    const float gx = std::max(0.5f, std::min(m_N + 0.5f, x * m_N + 0.5f));
+    const float gy = std::max(0.5f, std::min(m_N + 0.5f, y * m_N + 0.5f));
+    return bilinearSample(m_temperature, gx, gy);
 }

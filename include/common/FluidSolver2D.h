@@ -50,12 +50,27 @@ public:
     void enableVorticity(bool enabled) { m_useVorticity = enabled; }
     bool vorticityEnabled() const { return m_useVorticity; }
 
+    // Temperature/buoyancy (optional "Temperature" feature, Fedkiw/Stam/Jensen 2001).
+    // The temperature field is transported just like density; the buoyancy force
+    // f = (-alpha*density + beta*(T - Tambient)) * up is added to the vertical
+    // velocity so warm smoke rises and dense smoke sinks.
+    void setTemperatureDiffusion(float value) { m_temperatureDiffusion = std::max(0.0f, value); }
+    void setAmbientTemperature(float value) { m_ambientTemperature = value; }
+    void setBuoyancy(float alpha, float beta) { m_buoyancyAlpha = std::max(0.0f, alpha); m_buoyancyBeta = std::max(0.0f, beta); }
+    void enableBuoyancy(bool enabled) { m_useBuoyancy = enabled; }
+    bool buoyancyEnabled() const { return m_useBuoyancy; }
+
     // Add source terms. The amount is written into the *_Prev arrays because
     // Stam's solver treats those arrays as temporary source buffers.
     void addDensityCell(int i, int j, float amount);
     void addVelocityCell(int i, int j, float amountU, float amountV);
     void addDensityAt(float x, float y, float amount, int radius = 1);
     void addVelocityAt(float x, float y, float amountU, float amountV, int radius = 1);
+
+    // Inject heat. Like density, the amount is written into the temperature
+    // source buffer and applied during the next step.
+    void addTemperatureCell(int i, int j, float amount);
+    void addTemperatureAt(float x, float y, float amount, int radius = 1);
 
     // Edge walls. wallX(i,j) blocks the vertical edge between cells (i-1,j) and (i,j).
     // wallY(i,j) blocks the horizontal edge between cells (i,j-1) and (i,j).
@@ -74,13 +89,28 @@ public:
     void step(float dt);
 
     float density(int i, int j) const { return m_density[ix(i, j)]; }
+    float temperature(int i, int j) const { return m_temperature[ix(i, j)]; }
     float velocityU(int i, int j) const { return m_u[ix(i, j)]; }
     float velocityV(int i, int j) const { return m_v[ix(i, j)]; }
+    // Diagnostics exposed for the multi-field visualization. curl(i,j) is the
+    // scalar 2D vorticity (dv/dx - du/dy); pressure(i,j) is the field solved in
+    // the last projection step.
+    float curl(int i, int j) const;
+    float pressure(int i, int j) const;
     Vec2f sampleVelocity(float x, float y) const;
     float sampleDensity(float x, float y) const;
+    float sampleTemperature(float x, float y) const;
 
     const std::vector<float>& densityField() const { return m_density; }
+    const std::vector<float>& temperatureField() const { return m_temperature; }
     const std::vector<unsigned char>& solidField() const { return m_solid; }
+
+    // Timing instrumentation (used for the report's per-step timings). step()
+    // records its own wall-clock cost; avgStepMs() is an exponential moving
+    // average so the value settles a couple of seconds after a feature toggle.
+    double lastStepMs() const { return m_lastStepMs; }
+    double avgStepMs() const { return m_avgStepMs; }
+    void resetTiming() { m_lastStepMs = 0.0; m_avgStepMs = 0.0; m_timingSamples = 0; }
 
 private:
     int m_N;
@@ -88,13 +118,23 @@ private:
     float m_viscosity;
     float m_vorticityStrength;
     bool m_useVorticity;
+    float m_temperatureDiffusion;
+    float m_ambientTemperature;
+    float m_buoyancyAlpha;
+    float m_buoyancyBeta;
+    bool m_useBuoyancy;
 
     std::vector<float> m_u, m_v, m_uPrev, m_vPrev;
     std::vector<float> m_density, m_densityPrev;
+    std::vector<float> m_temperature, m_temperaturePrev;
     std::vector<float> m_pressure, m_divergence;
     std::vector<float> m_solidU, m_solidV;
     std::vector<unsigned char> m_solid;
     std::vector<unsigned char> m_wallX, m_wallY;
+
+    double m_lastStepMs = 0.0;
+    double m_avgStepMs = 0.0;
+    long m_timingSamples = 0;
 
     void addSource(std::vector<float>& x, const std::vector<float>& s, float dt);
     void setBoundary(int b, std::vector<float>& x);
@@ -106,6 +146,9 @@ private:
     // Fedkiw/Stam/Jensen vorticity confinement: compute scalar curl omega,
     // normalize grad(|omega|), then add epsilon*(N x omega) as a body force.
     void applyVorticityConfinement(float dt);
+    // Thermal buoyancy body force (Fedkiw/Stam/Jensen 2001, eq. for f_buoy).
+    // Adds (-alpha*density + beta*(T - Tambient)) to the upward velocity.
+    void applyBuoyancy(float dt);
     void applySolidVelocities();
     void rebuildObjectWalls();
     void addOuterWalls();

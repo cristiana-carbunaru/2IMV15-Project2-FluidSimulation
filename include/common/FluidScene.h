@@ -42,7 +42,9 @@ private:
     std::vector<ClothNode> m_cloth;
     std::vector<ClothSpring> m_clothSprings;
 
-    bool m_drawVelocity;
+    // Visualization view cycled with the 'v' key. Values match the ViewMode
+    // enum in FluidScene.cpp: density, velocity, vorticity, pressure, temperature.
+    int m_viewMode;
     bool m_enableVorticity;
     bool m_enableFixedObjects;
     bool m_enableMovingSolids;
@@ -50,6 +52,7 @@ private:
     bool m_enableRigidCollisions;
     bool m_enableTwoWayCoupling;
     bool m_enableParticlesAndCloth;
+    bool m_enableBuoyancy;
     int m_selectedBody;
     bool m_leftDown;
     bool m_rightDown;
@@ -57,6 +60,12 @@ private:
     Vec2f m_grabOffset;
     float m_sourceAmount;
     float m_forceScale;
+    float m_heatAmount;
+
+    // Timing readout for the report. Full-scene cost (solver + coupling +
+    // tracers + cloth) is averaged and printed to the console every second or so.
+    double m_avgSceneMs = 0.0;
+    long m_timingFrames = 0;
 
     Vec2f screenToUnit(int x, int y, int winX, int winY) const;
     // Re-render fixed walls and moving rigid bodies into FluidSolver2D.
@@ -75,6 +84,9 @@ private:
     void stepCloth(float dt);
     void drawDensity() const;
     void drawVelocity() const;
+    // Generic heatmap renderer for the scalar diagnostic views (vorticity,
+    // pressure, temperature). Auto-scales to the current frame's magnitude.
+    void drawScalarField(int mode) const;
     void drawSolidGrid() const;
     void drawTracersAndCloth() const;
 };

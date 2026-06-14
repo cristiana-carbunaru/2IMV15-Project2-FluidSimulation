@@ -64,7 +64,7 @@ The simulation starts paused. Press `space` to run/pause.
 | Left drag empty fluid | Inject velocity into the fluid |
 | Left drag a red/orange rigid object | Move it through the fluid; on release it snaps to the grid and stops |
 | Right drag | Add smoke/density |
-| `v` | Toggle density view / velocity view |
+| `v` | Cycle view: density / velocity / vorticity / pressure / temperature |
 | `z` | Toggle vorticity confinement |
 | `f` | Toggle fixed internal boundaries |
 | `m` | Toggle moving solid objects |
@@ -72,6 +72,7 @@ The simulation starts paused. Press `space` to run/pause.
 | `b` | Toggle collision impulses between rigid bodies |
 | `o` | Toggle two-way coupling from fluid to bodies |
 | `p` | Toggle tracer particles and cloth |
+| `t` | Toggle temperature buoyancy (hot smoke rises) |
 | `c` | Clear fluid fields |
 | `h` | Print fluid controls |
 | `s` | Cycle through original Project 1 scenes and the Project 2 scene |

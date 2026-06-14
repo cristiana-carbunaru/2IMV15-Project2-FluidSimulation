@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 
 static float length2(const Vec2f& v) { return v * v; }
 static float length(const Vec2f& v) { return std::sqrt(length2(v)); }
@@ -19,12 +20,53 @@ static Vec2f normalizeSafe(const Vec2f& v, const Vec2f& fallback = Vec2f(1.0f, 0
 }
 static float cross2D(const Vec2f& a, const Vec2f& b) { return a[0] * b[1] - a[1] * b[0]; }
 
+// Visualization views cycled by the 'v' key. VIEW_DENSITY and VIEW_VELOCITY are
+// the original two; the rest are scalar heatmaps drawn by drawScalarField.
+enum ViewMode {
+    VIEW_DENSITY = 0,
+    VIEW_VELOCITY,
+    VIEW_CURL,
+    VIEW_PRESSURE,
+    VIEW_TEMPERATURE,
+    VIEW_COUNT
+};
+
+static const char* viewName(int m) {
+    switch (m) {
+    case VIEW_DENSITY:     return "density";
+    case VIEW_VELOCITY:    return "velocity";
+    case VIEW_CURL:        return "vorticity (curl)";
+    case VIEW_PRESSURE:    return "pressure";
+    case VIEW_TEMPERATURE: return "temperature";
+    default:               return "density";
+    }
+}
+
+// Map a value to an RGB colour. Signed fields (curl, pressure) use a diverging
+// blue(negative) - dark - red(positive) map; non-negative fields (temperature)
+// use a warm black-body-style ramp. The input is already normalized to the
+// frame's magnitude: [-1,1] for signed fields, [0,1] otherwise.
+static void setHeatColor(float t, bool signedField) {
+    if (signedField) {
+        const float a = std::min(1.0f, std::fabs(t));
+        const float r = std::max(0.0f, t);
+        const float b = std::max(0.0f, -t);
+        glColor3f(r, 0.12f * a, b);
+    } else {
+        const float r = std::min(1.0f, t * 2.0f);
+        const float g = std::min(1.0f, std::max(0.0f, t * 2.0f - 0.6f));
+        const float bch = std::min(1.0f, std::max(0.0f, t * 2.0f - 1.3f));
+        glColor3f(r, g, bch);
+    }
+}
+
 FluidScene::FluidScene()
-    : m_solver(80), m_drawVelocity(false), m_enableVorticity(true), m_enableFixedObjects(true),
+    : m_solver(80), m_viewMode(VIEW_DENSITY), m_enableVorticity(true), m_enableFixedObjects(true),
       m_enableMovingSolids(true), m_enableRigidRotation(true), m_enableRigidCollisions(true),
-      m_enableTwoWayCoupling(true), m_enableParticlesAndCloth(true), m_selectedBody(-1),
+      m_enableTwoWayCoupling(true), m_enableParticlesAndCloth(true), m_enableBuoyancy(true),
+      m_selectedBody(-1),
       m_leftDown(false), m_rightDown(false), m_lastMouse(0.0f, 0.0f), m_grabOffset(0.0f, 0.0f),
-      m_sourceAmount(280.0f), m_forceScale(8.0f) {}
+      m_sourceAmount(280.0f), m_forceScale(8.0f), m_heatAmount(80.0f) {}
 
 // Create the default demo. The first body is fixed (blue), while the two other
 // bodies are movable/rotating and can be dragged with the mouse.
@@ -34,6 +76,12 @@ void FluidScene::init() {
     m_solver.setViscosity(0.00001f);
     m_solver.setVorticityStrength(2.0f);
     m_solver.enableVorticity(m_enableVorticity);
+    // Thermal buoyancy (optional Temperature feature): alpha weights the
+    // smoke-weight downforce, beta weights the warm-air lift.
+    m_solver.setBuoyancy(0.05f, 0.3f);
+    m_solver.setAmbientTemperature(0.0f);
+    m_solver.setTemperatureDiffusion(0.00002f);
+    m_solver.enableBuoyancy(m_enableBuoyancy);
     m_solver.clear();
 
     m_bodies.clear();
@@ -48,9 +96,11 @@ void FluidScene::init() {
     buildCloth();
     rebuildSolids();
 
-    // A little initial smoke plume and swirl.
+    // A little initial smoke plume and swirl. The plume is also seeded warm so
+    // the buoyancy force lifts it once the simulation runs.
     for (int j = 25; j <= 55; ++j) {
         m_solver.addDensityCell(8, j, 150.0f);
+        m_solver.addTemperatureCell(8, j, 60.0f);
         m_solver.addVelocityCell(8, j, 45.0f, 10.0f * std::sin(j * 0.2f));
     }
 }
@@ -263,7 +313,9 @@ void FluidScene::stepCloth(float dt) {
 // apply optional fluid-to-body impulses, advance the fluid, then advect
 // particles/cloth through the resulting velocity field.
 void FluidScene::step(float dt) {
+    const auto sceneT0 = std::chrono::high_resolution_clock::now();
     m_solver.enableVorticity(m_enableVorticity);
+    m_solver.enableBuoyancy(m_enableBuoyancy);
     for (RigidBody2D& body : m_bodies) {
         if (!body.selected && !body.fixed) body.integrate(dt, m_enableRigidRotation);
     }
@@ -272,10 +324,30 @@ void FluidScene::step(float dt) {
     applyFluidForcesToBodies(dt);
     rebuildSolids();
 
-    if (m_rightDown) m_solver.addDensityAt(m_lastMouse[0], m_lastMouse[1], m_sourceAmount, 2);
+    if (m_rightDown) {
+        m_solver.addDensityAt(m_lastMouse[0], m_lastMouse[1], m_sourceAmount, 2);
+        // Smoke injected by the user is hot, so it rises under buoyancy.
+        m_solver.addTemperatureAt(m_lastMouse[0], m_lastMouse[1], m_heatAmount, 2);
+    }
     m_solver.step(dt);
     stepTracers(dt);
     stepCloth(dt);
+
+    // Average the full-scene cost and report both numbers periodically. Read the
+    // console while toggling features to fill the report's timings table.
+    const auto sceneT1 = std::chrono::high_resolution_clock::now();
+    const double sceneMs = std::chrono::duration<double, std::milli>(sceneT1 - sceneT0).count();
+    ++m_timingFrames;
+    const double alpha = 0.05;
+    m_avgSceneMs = (m_timingFrames == 1) ? sceneMs : (1.0 - alpha) * m_avgSceneMs + alpha * sceneMs;
+    if (m_timingFrames % 60 == 0) {
+        std::printf("[timing] solver %.3f ms | scene %.3f ms/step  "
+                    "[vort=%d solids=%d couple=%d buoy=%d p&c=%d]\n",
+                    m_solver.avgStepMs(), m_avgSceneMs,
+                    m_enableVorticity ? 1 : 0, m_enableMovingSolids ? 1 : 0,
+                    m_enableTwoWayCoupling ? 1 : 0, m_enableBuoyancy ? 1 : 0,
+                    m_enableParticlesAndCloth ? 1 : 0);
+    }
 }
 
 // Feature toggles. The assignment asks the demo to turn features on/off, so
@@ -284,8 +356,8 @@ bool FluidScene::handleKey(unsigned char key) {
     switch (key) {
     case 'v':
     case 'V':
-        m_drawVelocity = !m_drawVelocity;
-        std::printf("Fluid view: %s\n", m_drawVelocity ? "velocity" : "density");
+        m_viewMode = (m_viewMode + 1) % VIEW_COUNT;
+        std::printf("Fluid view: %s\n", viewName(m_viewMode));
         return true;
     case 'z':
     case 'Z':
@@ -323,6 +395,11 @@ bool FluidScene::handleKey(unsigned char key) {
     case 'P':
         m_enableParticlesAndCloth = !m_enableParticlesAndCloth;
         std::printf("Particles and cloth %s\n", m_enableParticlesAndCloth ? "enabled" : "disabled");
+        return true;
+    case 't':
+    case 'T':
+        m_enableBuoyancy = !m_enableBuoyancy;
+        std::printf("Temperature buoyancy %s\n", m_enableBuoyancy ? "enabled" : "disabled");
         return true;
     case 'c':
     case 'C':
@@ -371,7 +448,10 @@ void FluidScene::mouse(int button, int state, int x, int y, int winX, int winY) 
         }
     } else if (button == GLUT_RIGHT_BUTTON) {
         m_rightDown = state == GLUT_DOWN;
-        if (m_rightDown) m_solver.addDensityAt(p[0], p[1], m_sourceAmount, 2);
+        if (m_rightDown) {
+            m_solver.addDensityAt(p[0], p[1], m_sourceAmount, 2);
+            m_solver.addTemperatureAt(p[0], p[1], m_heatAmount, 2);
+        }
     }
 }
 
@@ -398,7 +478,10 @@ void FluidScene::motion(int x, int y, int winX, int winY) {
     } else if (m_leftDown) {
         m_solver.addVelocityAt(p[0], p[1], delta[0] * m_forceScale * 60.0f, delta[1] * m_forceScale * 60.0f, 2);
     }
-    if (m_rightDown) m_solver.addDensityAt(p[0], p[1], m_sourceAmount, 2);
+    if (m_rightDown) {
+        m_solver.addDensityAt(p[0], p[1], m_sourceAmount, 2);
+        m_solver.addTemperatureAt(p[0], p[1], m_heatAmount, 2);
+    }
     m_lastMouse = p;
 }
 
@@ -436,6 +519,43 @@ void FluidScene::drawVelocity() const {
             float v = m_solver.velocityV(i, j) * 0.015f;
             glVertex2f(x, y);
             glVertex2f(x + u, y + v);
+        }
+    }
+    glEnd();
+}
+
+// Render one of the scalar diagnostic fields as a per-cell heatmap. The field is
+// gathered once, the frame's peak magnitude is used to auto-scale, and each cell
+// is drawn as a flat-shaded quad so the structure of the field is easy to read.
+void FluidScene::drawScalarField(int mode) const {
+    const int N = m_solver.gridSize();
+    const float h = 1.0f / N;
+    const bool signedField = (mode == VIEW_CURL || mode == VIEW_PRESSURE);
+
+    std::vector<float> val(N * N, 0.0f);
+    float maxMag = 1e-6f;
+    for (int j = 1; j <= N; ++j) {
+        for (int i = 1; i <= N; ++i) {
+            float v = 0.0f;
+            switch (mode) {
+            case VIEW_CURL:        v = m_solver.curl(i, j); break;
+            case VIEW_PRESSURE:    v = m_solver.pressure(i, j); break;
+            case VIEW_TEMPERATURE: v = m_solver.temperature(i, j); break;
+            default:               v = m_solver.density(i, j); break;
+            }
+            val[(j - 1) * N + (i - 1)] = v;
+            maxMag = std::max(maxMag, std::fabs(v));
+        }
+    }
+
+    glBegin(GL_QUADS);
+    for (int j = 1; j <= N; ++j) {
+        for (int i = 1; i <= N; ++i) {
+            const float t = val[(j - 1) * N + (i - 1)] / maxMag;
+            setHeatColor(t, signedField);
+            const float x = (i - 1) * h;
+            const float y = (j - 1) * h;
+            glVertex2f(x, y); glVertex2f(x + h, y); glVertex2f(x + h, y + h); glVertex2f(x, y + h);
         }
     }
     glEnd();
@@ -480,8 +600,13 @@ void FluidScene::drawTracersAndCloth() const {
 }
 
 void FluidScene::draw() const {
-    if (m_drawVelocity) drawVelocity();
-    else drawDensity();
+    switch (m_viewMode) {
+    case VIEW_VELOCITY:    drawVelocity(); break;
+    case VIEW_CURL:        drawScalarField(VIEW_CURL); break;
+    case VIEW_PRESSURE:    drawScalarField(VIEW_PRESSURE); break;
+    case VIEW_TEMPERATURE: drawScalarField(VIEW_TEMPERATURE); break;
+    default:               drawDensity(); break;
+    }
     drawSolidGrid();
     if (m_enableMovingSolids || m_enableFixedObjects) {
         for (const RigidBody2D& b : m_bodies) {
@@ -499,7 +624,7 @@ void FluidScene::printHelp() const {
     std::printf("left drag empty fluid - inject velocity\n");
     std::printf("left drag solid - move/rotate a rigid object; object snaps to grid on release\n");
     std::printf("right drag - add density/smoke\n");
-    std::printf("v - density/velocity view\n");
+    std::printf("v - cycle view: density / velocity / vorticity / pressure / temperature\n");
     std::printf("z - toggle vorticity confinement\n");
     std::printf("f - toggle fixed internal boundaries\n");
     std::printf("m - toggle moving solid objects\n");
@@ -507,6 +632,7 @@ void FluidScene::printHelp() const {
     std::printf("b - toggle rigid-body collision impulses\n");
     std::printf("o - toggle two-way fluid/solid coupling\n");
     std::printf("p - toggle tracer particles and cloth\n");
+    std::printf("t - toggle temperature buoyancy (hot smoke rises)\n");
     std::printf("c - clear fluid fields\n");
     std::printf("s - cycle back to Project 1 scenes\n");
     std::printf("================================\n\n");
