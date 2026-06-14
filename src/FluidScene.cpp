@@ -43,7 +43,7 @@ static const char* viewName(int m) {
 }
 
 // Map a value to an RGB colour. Signed fields (curl, pressure) use a diverging
-// blue(negative) - dark - red(positive) map; non-negative fields (temperature)
+// blue(negative) - dark - red(positive) map, non-negative fields (temperature)
 // use a warm black-body-style ramp. The input is already normalized to the
 // frame's magnitude: [-1,1] for signed fields, [0,1] otherwise.
 static void setHeatColor(float t, bool signedField) {

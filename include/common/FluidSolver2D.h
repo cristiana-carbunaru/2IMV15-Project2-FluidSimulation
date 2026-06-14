@@ -50,9 +50,8 @@ public:
     void enableVorticity(bool enabled) { m_useVorticity = enabled; }
     bool vorticityEnabled() const { return m_useVorticity; }
 
-    // Temperature/buoyancy (optional "Temperature" feature, Fedkiw/Stam/Jensen 2001).
+    // Temperature/buoyancy
     // The temperature field is transported just like density; the buoyancy force
-    // f = (-alpha*density + beta*(T - Tambient)) * up is added to the vertical
     // velocity so warm smoke rises and dense smoke sinks.
     void setTemperatureDiffusion(float value) { m_temperatureDiffusion = std::max(0.0f, value); }
     void setAmbientTemperature(float value) { m_ambientTemperature = value; }
@@ -72,8 +71,6 @@ public:
     void addTemperatureCell(int i, int j, float amount);
     void addTemperatureAt(float x, float y, float amount, int radius = 1);
 
-    // Edge walls. wallX(i,j) blocks the vertical edge between cells (i-1,j) and (i,j).
-    // wallY(i,j) blocks the horizontal edge between cells (i,j-1) and (i,j).
     void setVerticalWall(int i, int j, bool blocked);
     void setHorizontalWall(int i, int j, bool blocked);
     void addBoxWall(int i0, int j0, int i1, int j1);
@@ -92,9 +89,7 @@ public:
     float temperature(int i, int j) const { return m_temperature[ix(i, j)]; }
     float velocityU(int i, int j) const { return m_u[ix(i, j)]; }
     float velocityV(int i, int j) const { return m_v[ix(i, j)]; }
-    // Diagnostics exposed for the multi-field visualization. curl(i,j) is the
-    // scalar 2D vorticity (dv/dx - du/dy); pressure(i,j) is the field solved in
-    // the last projection step.
+    // Diagnostics exposed for the multi-field visualization. 
     float curl(int i, int j) const;
     float pressure(int i, int j) const;
     Vec2f sampleVelocity(float x, float y) const;
@@ -105,9 +100,7 @@ public:
     const std::vector<float>& temperatureField() const { return m_temperature; }
     const std::vector<unsigned char>& solidField() const { return m_solid; }
 
-    // Timing instrumentation (used for the report's per-step timings). step()
-    // records its own wall-clock cost; avgStepMs() is an exponential moving
-    // average so the value settles a couple of seconds after a feature toggle.
+    // Timing instrumentation step(), avgStepMs() 
     double lastStepMs() const { return m_lastStepMs; }
     double avgStepMs() const { return m_avgStepMs; }
     void resetTiming() { m_lastStepMs = 0.0; m_avgStepMs = 0.0; m_timingSamples = 0; }
@@ -146,8 +139,7 @@ private:
     // Fedkiw/Stam/Jensen vorticity confinement: compute scalar curl omega,
     // normalize grad(|omega|), then add epsilon*(N x omega) as a body force.
     void applyVorticityConfinement(float dt);
-    // Thermal buoyancy body force (Fedkiw/Stam/Jensen 2001, eq. for f_buoy).
-    // Adds (-alpha*density + beta*(T - Tambient)) to the upward velocity.
+    // Thermal buoyancy body force 
     void applyBuoyancy(float dt);
     void applySolidVelocities();
     void rebuildObjectWalls();

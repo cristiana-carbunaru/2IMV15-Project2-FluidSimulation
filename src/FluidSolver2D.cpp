@@ -410,7 +410,6 @@ void FluidSolver2D::project(std::vector<float>& u, std::vector<float>& v, std::v
     }
     setBoundary(1, u);
     setBoundary(2, v);
-    // Keep the solved pressure for the pressure visualization view.
     m_pressure = p;
     applySolidVelocities();
 }

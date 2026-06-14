@@ -43,7 +43,6 @@ private:
     std::vector<ClothSpring> m_clothSprings;
 
     // Visualization view cycled with the 'v' key. Values match the ViewMode
-    // enum in FluidScene.cpp: density, velocity, vorticity, pressure, temperature.
     int m_viewMode;
     bool m_enableVorticity;
     bool m_enableFixedObjects;
@@ -62,8 +61,8 @@ private:
     float m_forceScale;
     float m_heatAmount;
 
-    // Timing readout for the report. Full-scene cost (solver + coupling +
-    // tracers + cloth) is averaged and printed to the console every second or so.
+    // Timing readout, full-scene cost (solver + coupling +
+    // tracers + cloth) is averaged
     double m_avgSceneMs = 0.0;
     long m_timingFrames = 0;
 
@@ -84,8 +83,7 @@ private:
     void stepCloth(float dt);
     void drawDensity() const;
     void drawVelocity() const;
-    // Generic heatmap renderer for the scalar diagnostic views (vorticity,
-    // pressure, temperature). Auto-scales to the current frame's magnitude.
+    // Generic heatmap render
     void drawScalarField(int mode) const;
     void drawSolidGrid() const;
     void drawTracersAndCloth() const;
