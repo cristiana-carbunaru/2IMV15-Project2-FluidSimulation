@@ -79,8 +79,10 @@ public:
     // is the object's surface velocity at that cell centre; projection uses it
     // as the boundary velocity, so the object pushes the fluid.
     void setSolidCell(int i, int j, bool solid, float solidU = 0.0f, float solidV = 0.0f);
+    void setSolidVelocity(int i, int j, float solidU, float solidV);
     bool isSolidCell(int i, int j) const;
     bool isBlocked(int i0, int j0, int i1, int j1) const;
+
 
     // Advance density and velocity by one Stable Fluids time step.
     void step(float dt);
@@ -131,7 +133,7 @@ private:
 
     void addSource(std::vector<float>& x, const std::vector<float>& s, float dt);
     void setBoundary(int b, std::vector<float>& x);
-    void linearSolve(int b, std::vector<float>& x, const std::vector<float>& x0, float a, float c);
+    void linearSolve(int b, std::vector<float>& x, const std::vector<float>& x0, float a);
     void diffuse(int b, std::vector<float>& x, const std::vector<float>& x0, float diff, float dt);
     void advect(int b, std::vector<float>& d, const std::vector<float>& d0,
                 const std::vector<float>& u, const std::vector<float>& v, float dt);

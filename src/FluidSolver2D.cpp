@@ -162,6 +162,17 @@ void FluidSolver2D::setSolidCell(int i, int j, bool solid, float solidU, float s
     }
 }
 
+void FluidSolver2D::setSolidVelocity(int i, int j, float solidU, float solidV) {
+    if (i < 1 || i > m_N || j < 1 || j > m_N) return;
+    int k = ix(i, j);
+    if (m_solid[k]) {
+        m_solidU[k] = solidU;
+        m_solidV[k] = solidV;
+        m_u[k] = solidU;
+        m_v[k] = solidV;
+    }
+}
+
 bool FluidSolver2D::isSolidCell(int i, int j) const {
     if (i < 1 || i > m_N || j < 1 || j > m_N) return true;
     return m_solid[ix(i, j)] != 0;
@@ -257,7 +268,7 @@ void FluidSolver2D::setBoundary(int b, std::vector<float>& x) {
 // Standard Stam denominator is c = 1 + 4a. When a cell has blocked neighbours,
 // only unblocked neighbours are included; the denominator is adjusted so walls
 // behave like zero-flux/no-through boundaries.
-void FluidSolver2D::linearSolve(int b, std::vector<float>& x, const std::vector<float>& x0, float a, float c) {
+void FluidSolver2D::linearSolve(int b, std::vector<float>& x, const std::vector<float>& x0, float a) {
     for (int k = 0; k < 25; ++k) {
         for (int j = 1; j <= m_N; ++j) {
             for (int i = 1; i <= m_N; ++i) {
@@ -268,7 +279,7 @@ void FluidSolver2D::linearSolve(int b, std::vector<float>& x, const std::vector<
                 if (!isBlocked(i, j, i + 1, j)) { sum += x[ix(i + 1, j)]; ++count; }
                 if (!isBlocked(i, j, i, j - 1)) { sum += x[ix(i, j - 1)]; ++count; }
                 if (!isBlocked(i, j, i, j + 1)) { sum += x[ix(i, j + 1)]; ++count; }
-                x[ix(i, j)] = (x0[ix(i, j)] + a * sum) / (1.0f + a * count + (c - (1.0f + 4.0f * a)));
+                x[ix(i, j)] = (x0[ix(i, j)] + a * sum) / (1.0f + a * count);
             }
         }
         setBoundary(b, x);
@@ -279,7 +290,7 @@ void FluidSolver2D::linearSolve(int b, std::vector<float>& x, const std::vector<
 // reason diffusion stays stable for interactive time steps.
 void FluidSolver2D::diffuse(int b, std::vector<float>& x, const std::vector<float>& x0, float diff, float dt) {
     const float a = dt * diff * m_N * m_N;
-    linearSolve(b, x, x0, a, 1.0f + 4.0f * a);
+    linearSolve(b, x, x0, a);
 }
 
 // Semi-Lagrangian backtrace from the centre of cell (i,j). We subdivide the
@@ -396,16 +407,16 @@ void FluidSolver2D::project(std::vector<float>& u, std::vector<float>& v, std::v
             if (!isBlocked(i, j, i + 1, j) && !isBlocked(i, j, i - 1, j))
                 u[ix(i, j)] -= 0.5f * m_N * (p[ix(i + 1, j)] - p[ix(i - 1, j)]);
             else if (isBlocked(i, j, i + 1, j))
-                u[ix(i, j)] = valueForNeighbor(u, i + 1, j, 1);
+                u[ix(i, j)] -= 0.5f * m_N * (p[ix(i, j)] - p[ix(i - 1, j)]);
             else if (isBlocked(i, j, i - 1, j))
-                u[ix(i, j)] = valueForNeighbor(u, i - 1, j, 1);
+                u[ix(i, j)] -= 0.5f * m_N * (p[ix(i + 1, j)] - p[ix(i, j)]);
 
             if (!isBlocked(i, j, i, j + 1) && !isBlocked(i, j, i, j - 1))
                 v[ix(i, j)] -= 0.5f * m_N * (p[ix(i, j + 1)] - p[ix(i, j - 1)]);
             else if (isBlocked(i, j, i, j + 1))
-                v[ix(i, j)] = valueForNeighbor(v, i, j + 1, 2);
+                v[ix(i, j)] -= 0.5f * m_N * (p[ix(i, j)] - p[ix(i, j - 1)]);
             else if (isBlocked(i, j, i, j - 1))
-                v[ix(i, j)] = valueForNeighbor(v, i, j - 1, 2);
+                v[ix(i, j)] -= 0.5f * m_N * (p[ix(i, j + 1)] - p[ix(i, j)]);
         }
     }
     setBoundary(1, u);
