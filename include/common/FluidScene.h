@@ -18,7 +18,7 @@ public:
     void draw() const;
     bool handleKey(unsigned char key);
     void mouse(int button, int state, int x, int y, int winX, int winY);
-    void motion(int x, int y, int winX, int winY);
+    void motion(int x, int y, int winX, int winY, float dt);
     void printHelp() const;
 
 private:
@@ -52,6 +52,7 @@ private:
     bool m_enableTwoWayCoupling;
     bool m_enableParticlesAndCloth;
     bool m_enableBuoyancy;
+    bool m_enableGravity;
     int m_selectedBody;
     bool m_leftDown;
     bool m_rightDown;

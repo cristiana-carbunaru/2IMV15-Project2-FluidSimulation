@@ -64,7 +64,7 @@ FluidScene::FluidScene()
     : m_solver(80), m_viewMode(VIEW_DENSITY), m_enableVorticity(true), m_enableFixedObjects(true),
       m_enableMovingSolids(true), m_enableRigidRotation(true), m_enableRigidCollisions(true),
       m_enableTwoWayCoupling(true), m_enableParticlesAndCloth(true), m_enableBuoyancy(true),
-      m_selectedBody(-1),
+      m_enableGravity(true), m_selectedBody(-1),
       m_leftDown(false), m_rightDown(false), m_lastMouse(0.0f, 0.0f), m_grabOffset(0.0f, 0.0f),
       m_sourceAmount(280.0f), m_forceScale(8.0f), m_heatAmount(80.0f) {}
 
@@ -217,8 +217,21 @@ void FluidScene::applyFluidForcesToBodies(float dt) {
         float totalTorque = 0.0f;
         const int samples = 16;
         for (int s = 0; s < samples; ++s) {
-            const float a = 2.0f * static_cast<float>(M_PI) * s / samples;
-            Vec2f local(std::cos(a) * body.radius, std::sin(a) * body.radius);
+            // Sample points around the body's surface
+            Vec2f local;
+            if (body.shape == RigidBody2D::BOX) {
+                int edge = s / 4;
+                float t = (s % 4 + 0.5f) / 4.0f * 2.0f - 1.0f;
+                if (edge == 0) local = Vec2f(body.halfSize[0], body.halfSize[1] * t);
+                else if (edge == 1) local = Vec2f(-body.halfSize[0], body.halfSize[1] * t);
+                else if (edge == 2) local = Vec2f(body.halfSize[0] * t, body.halfSize[1]);
+                else local = Vec2f(body.halfSize[0] * t, -body.halfSize[1]);
+                float c = std::cos(body.angle), si = std::sin(body.angle);
+                local = Vec2f(c * local[0] - si * local[1], si * local[0] + c * local[1]);
+            } else {
+                const float a = 2.0f * static_cast<float>(M_PI) * s / samples;
+                local = Vec2f(std::cos(a) * body.radius, std::sin(a) * body.radius);
+            }
             Vec2f point = body.position + local;
             Vec2f fluidVel = m_solver.sampleVelocity(point[0], point[1]);
             Vec2f rel = fluidVel - body.surfaceVelocity(point);
@@ -244,10 +257,98 @@ void FluidScene::collideBodies() {
             float dist = length(delta);
             float allowed = A.radius + B.radius;
             if (dist >= allowed || (A.fixed && B.fixed)) continue;
-            Vec2f n = normalizeSafe(delta);
-            float penetration = allowed - dist;
+            
+            Vec2f n;
+            float penetration = 0.0f;
+
+            // Calculate contact points and normal
+            Vec2f contactPtA, contactPtB;
+            // Circle circle
+            if (A.shape == RigidBody2D::CIRCLE && B.shape == RigidBody2D::CIRCLE) {
+                n = normalizeSafe(delta);
+                penetration = allowed - dist;
+                contactPtA = A.position + n * A.radius;
+                contactPtB = B.position - n * B.radius;
+            // Box box
+            } else if (A.shape == RigidBody2D::BOX && B.shape == RigidBody2D::BOX) {
+                Vec2f axesA[2], axesB[2];
+                Vec2f cornersA[4], cornersB[4];
+                A.getAxesAndCorners(axesA, cornersA);
+                B.getAxesAndCorners(axesB, cornersB);
+                
+                Vec2f axesToTest[4] = { axesA[0], axesA[1], axesB[0], axesB[1] };
+                float minOverlap = 1e9f;
+                Vec2f bestAxis(0.0f, 0.0f);
+                bool disjoint = false;
+                
+                // Separating Axis Theorem
+                for (int i = 0; i < 4; ++i) {
+                    Vec2f axis = axesToTest[i];
+                    float minA = 1e9f, maxA = -1e9f;
+                    float minB = 1e9f, maxB = -1e9f;
+                    for (int k = 0; k < 4; ++k) {
+                        float projA = cornersA[k] * axis;
+                        minA = std::min(minA, projA); maxA = std::max(maxA, projA);
+                        float projB = cornersB[k] * axis;
+                        minB = std::min(minB, projB); maxB = std::max(maxB, projB);
+                    }
+                    if (maxA < minB || maxB < minA) {
+                        disjoint = true;
+                        break;
+                    }
+                    float overlap = std::min(maxA, maxB) - std::max(minA, minB);
+                    if (overlap < minOverlap) {
+                        minOverlap = overlap;
+                        bestAxis = axis;
+                    }
+                }
+                // no collision if disjoint
+                if (disjoint) continue;
+                penetration = minOverlap;
+                n = (delta * bestAxis < 0) ? -bestAxis : bestAxis;
+                Vec2f dummyN;
+                A.closestSurfacePoint(B.position, contactPtA, dummyN);
+                B.closestSurfacePoint(A.position, contactPtB, dummyN);
+            } else {
+                // Box circle
+                RigidBody2D* box = (A.shape == RigidBody2D::BOX) ? &A : &B;
+                RigidBody2D* circle = (A.shape == RigidBody2D::CIRCLE) ? &A : &B;
+                Vec2f closestPt, normal;
+                box->closestSurfacePoint(circle->position, closestPt, normal);
+                
+                // Check if circle is outside box and not overlapping
+                Vec2f cDelta = circle->position - closestPt;
+                float cDist = length(cDelta);
+                
+                if (cDist >= circle->radius && (cDelta * normal) >= 0.0f) continue;
+                
+                // Calculate contact normal and penetration depth
+                if (cDist < 1e-6f) {
+                    n = normal;
+                    penetration = circle->radius;
+                } else {
+                    n = cDelta / cDist;
+                    if (cDelta * normal < 0.0f) { // circle center is inside box
+                        n = -n;
+                        penetration = circle->radius + cDist;
+                    } else {
+                        penetration = circle->radius - cDist;
+                    }
+                }
+                // Determine contact points on the surfaces
+                if (box == &B) n = -n;
+                if (box == &A) {
+                    contactPtA = closestPt;
+                    contactPtB = circle->position - n * circle->radius;
+                } else {
+                    contactPtA = circle->position + n * circle->radius;
+                    contactPtB = closestPt;
+                }
+            }
+
             float invSum = A.invMass + B.invMass;
             if (invSum <= 0.0f) continue;
+            
             if (!A.fixed) A.position -= n * (penetration * A.invMass / invSum);
             if (!B.fixed) B.position += n * (penetration * B.invMass / invSum);
 
@@ -255,10 +356,17 @@ void FluidScene::collideBodies() {
             float vn = rv * n;
             if (vn < 0.0f) {
                 float e = 0.45f;
-                float j = -(1.0f + e) * vn / invSum;
+                if (-vn < 0.05f) e = 0.0f; // prevent micro-bounces
+                
+                Vec2f rA = contactPtA - A.position; 
+                Vec2f rB = contactPtB - B.position;
+                float angA = m_enableRigidRotation ? cross2D(rA, n) * cross2D(rA, n) * A.invInertia : 0.0f;
+                float angB = m_enableRigidRotation ? cross2D(rB, n) * cross2D(rB, n) * B.invInertia : 0.0f;
+                float j = -(1.0f + e) * vn / (invSum + angA + angB);
+                
                 Vec2f impulse = n * j;
-                A.applyImpulse(-impulse, A.position + n * A.radius, m_enableRigidRotation);
-                B.applyImpulse( impulse, B.position - n * B.radius, m_enableRigidRotation);
+                A.applyImpulse(-impulse, contactPtA, m_enableRigidRotation);
+                B.applyImpulse( impulse, contactPtB, m_enableRigidRotation);
             }
         }
     }
@@ -272,10 +380,25 @@ void FluidScene::stepTracers(float dt) {
         Vec2f vf = m_solver.sampleVelocity(p.position[0], p.position[1]);
         p.velocity += (vf - p.velocity) * std::min(1.0f, 6.0f * dt);
         p.position += p.velocity * dt;
-        if (p.position[0] < 0.01f) p.position[0] = 0.99f;
-        if (p.position[0] > 0.99f) p.position[0] = 0.01f;
-        if (p.position[1] < 0.01f) p.position[1] = 0.99f;
-        if (p.position[1] > 0.99f) p.position[1] = 0.01f;
+        
+        // if tracer inside a rigid body push it out
+        for (const RigidBody2D& body : m_bodies) {
+            if (body.contains(p.position)) {
+                Vec2f closestPt, normal;
+                body.closestSurfacePoint(p.position, closestPt, normal);
+                p.position = closestPt + normal * 1e-4f;
+                float vn = p.velocity * normal;
+                if (vn < 0.0f) {
+                    p.velocity -= normal * vn;
+                }
+            }
+        }
+        
+        // keep tracers inside the unit square
+        if (p.position[0] < 0.02f) { p.position[0] = 0.02f; p.velocity[0] *= -0.5f; }
+        if (p.position[0] > 0.98f) { p.position[0] = 0.98f; p.velocity[0] *= -0.5f; }
+        if (p.position[1] < 0.02f) { p.position[1] = 0.02f; p.velocity[1] *= -0.5f; }
+        if (p.position[1] > 0.98f) { p.position[1] = 0.98f; p.velocity[1] *= -0.5f; }
     }
 }
 
@@ -298,12 +421,41 @@ void FluidScene::stepCloth(float dt) {
     }
     for (size_t i = 0; i < m_cloth.size(); ++i) {
         if (m_cloth[i].pinned) continue;
+
+        // drag force between the fluid and the cloth node
         Vec2f fluid = m_solver.sampleVelocity(m_cloth[i].position[0], m_cloth[i].position[1]);
-        forces[i] += (fluid - m_cloth[i].velocity) * 8.0f;
+        Vec2f drag = (fluid - m_cloth[i].velocity) * 8.0f;
+        
+        // limit drag
+        float dragLen = length(drag);
+        if (dragLen > 2.0f) drag = drag * (2.0f / dragLen);
+        
+        // apply forces to the cloth node
+        forces[i] += drag;
         forces[i] += Vec2f(0.0f, -0.15f);
+        
+        // apply drag to solver
+        m_solver.addVelocityAt(m_cloth[i].position[0], m_cloth[i].position[1], -drag[0], -drag[1], 1);
+        
+        // node pos and vel update
         m_cloth[i].velocity += forces[i] * dt;
         m_cloth[i].velocity *= 0.995f;
         m_cloth[i].position += m_cloth[i].velocity * dt;
+        
+        // collision with rigid bodies
+        for (const RigidBody2D& body : m_bodies) {
+            if (body.contains(m_cloth[i].position)) {
+                Vec2f closestPt, normal;
+                body.closestSurfacePoint(m_cloth[i].position, closestPt, normal);
+                m_cloth[i].position = closestPt + normal * 1e-4f;
+                
+                float vn = m_cloth[i].velocity * normal;
+                if (vn < 0.0f) {
+                    m_cloth[i].velocity -= normal * vn;
+                }
+            }
+        }
+        
         m_cloth[i].position[0] = std::max(0.02f, std::min(0.98f, m_cloth[i].position[0]));
         m_cloth[i].position[1] = std::max(0.02f, std::min(0.98f, m_cloth[i].position[1]));
     }
@@ -317,12 +469,41 @@ void FluidScene::step(float dt) {
     m_solver.enableVorticity(m_enableVorticity);
     m_solver.enableBuoyancy(m_enableBuoyancy);
     for (RigidBody2D& body : m_bodies) {
-        if (!body.selected && !body.fixed) body.integrate(dt, m_enableRigidRotation);
+        if (!body.selected && !body.fixed) body.integrate(dt, m_enableRigidRotation, m_enableGravity);
     }
     collideBodies();
     rebuildSolids();
     applyFluidForcesToBodies(dt);
-    rebuildSolids();
+    
+    // Set the surface velocity of each moving body into the fluid solver
+    for (RigidBody2D& body : m_bodies) {
+        // skip fixed and mouse dragged bodies
+        if (body.fixed || body.selected) continue;
+        
+        // Compute the bounding box of the body in grid coordinates
+        const int N = m_solver.gridSize();
+        const float minX = std::max(0.0f, body.position[0] - body.radius - 0.02f);
+        const float maxX = std::min(1.0f, body.position[0] + body.radius + 0.02f);
+        const float minY = std::max(0.0f, body.position[1] - body.radius - 0.02f);
+        const float maxY = std::min(1.0f, body.position[1] + body.radius + 0.02f);
+        
+        // Convert to grid indices
+        int i0 = std::max(1, static_cast<int>(minX * N));
+        int i1 = std::min(N, static_cast<int>(maxX * N) + 1);
+        int j0 = std::max(1, static_cast<int>(minY * N));
+        int j1 = std::min(N, static_cast<int>(maxY * N) + 1);
+        
+        // Set the surface velocity for each grid cell that is inside the body
+        for (int j = j0; j <= j1; ++j) {
+            for (int i = i0; i <= i1; ++i) {
+                Vec2f p((i - 0.5f) / N, (j - 0.5f) / N);
+                if (body.contains(p)) {
+                    Vec2f sv = body.surfaceVelocity(p);
+                    m_solver.setSolidVelocity(i, j, sv[0], sv[1]);
+                }
+            }
+        }
+    }
 
     if (m_rightDown) {
         m_solver.addDensityAt(m_lastMouse[0], m_lastMouse[1], m_sourceAmount, 2);
@@ -399,7 +580,13 @@ bool FluidScene::handleKey(unsigned char key) {
     case 't':
     case 'T':
         m_enableBuoyancy = !m_enableBuoyancy;
-        std::printf("Temperature buoyancy %s\n", m_enableBuoyancy ? "enabled" : "disabled");
+        m_solver.enableBuoyancy(m_enableBuoyancy);
+        std::printf("Buoyancy: %s\n", m_enableBuoyancy ? "ON" : "OFF");
+        return true;
+    case 'g':
+    case 'G':
+        m_enableGravity = !m_enableGravity;
+        std::printf("Rigid-body gravity %s\n", m_enableGravity ? "enabled" : "disabled");
         return true;
     case 'c':
     case 'C':
@@ -458,7 +645,7 @@ void FluidScene::mouse(int button, int state, int x, int y, int winX, int winY) 
 // Mouse motion while dragging. A moved rigid body immediately updates its
 // velocity and rasterized solid cells, so the next fluid step sees a moving
 // boundary and the body pushes the surrounding fluid.
-void FluidScene::motion(int x, int y, int winX, int winY) {
+void FluidScene::motion(int x, int y, int winX, int winY, float dt) {
     Vec2f p = screenToUnit(x, y, winX, winY);
     Vec2f delta = p - m_lastMouse;
     if (m_leftDown && m_selectedBody >= 0) {
@@ -468,15 +655,15 @@ void FluidScene::motion(int x, int y, int winX, int winY) {
         b.position = p + m_grabOffset;
         b.position[0] = std::max(b.radius, std::min(1.0f - b.radius, b.position[0]));
         b.position[1] = std::max(b.radius, std::min(1.0f - b.radius, b.position[1]));
-        b.velocity = (b.position - old) * 60.0f;
+        b.velocity = (b.position - old) / dt;
         if (m_enableRigidRotation) {
             b.angle += delta[0] * 8.0f;
-            b.angularVelocity = (b.angle - oldAngle) * 60.0f;
+            b.angularVelocity = (b.angle - oldAngle) / dt;
         }
         // The moving solid immediately injects its velocity into the cells it occupies.
         rebuildSolids();
     } else if (m_leftDown) {
-        m_solver.addVelocityAt(p[0], p[1], delta[0] * m_forceScale * 60.0f, delta[1] * m_forceScale * 60.0f, 2);
+        m_solver.addVelocityAt(p[0], p[1], delta[0] * m_forceScale / dt, delta[1] * m_forceScale / dt, 2);
     }
     if (m_rightDown) {
         m_solver.addDensityAt(p[0], p[1], m_sourceAmount, 2);
@@ -547,6 +734,7 @@ void FluidScene::drawScalarField(int mode) const {
             maxMag = std::max(maxMag, std::fabs(v));
         }
     }
+
 
     glBegin(GL_QUADS);
     for (int j = 1; j <= N; ++j) {
@@ -633,6 +821,7 @@ void FluidScene::printHelp() const {
     std::printf("o - toggle two-way fluid/solid coupling\n");
     std::printf("p - toggle tracer particles and cloth\n");
     std::printf("t - toggle temperature buoyancy (hot smoke rises)\n");
+    std::printf("g - toggle rigid-body gravity\n");
     std::printf("c - clear fluid fields\n");
     std::printf("s - cycle back to Project 1 scenes\n");
     std::printf("================================\n\n");
