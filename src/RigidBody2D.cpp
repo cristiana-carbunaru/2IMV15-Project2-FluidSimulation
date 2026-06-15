@@ -75,10 +75,14 @@ Vec2f RigidBody2D::surfaceVelocity(const Vec2f& worldPoint) const {
 
 // Explicit Euler integration for demo motion. Boundaries bounce weakly so the
 // bodies remain inside the fluid domain.
-void RigidBody2D::integrate(float dt, bool allowRotation) {
+void RigidBody2D::integrate(float dt, bool allowRotation, bool applyGravity) {
     previousPosition = position;
     previousAngle = angle;
     if (fixed) return;
+    // gravity
+    if (applyGravity) {
+        velocity[1] -= 0.5f * dt;
+    }
     position += velocity * dt;
     if (allowRotation) angle += angularVelocity * dt;
     else angularVelocity = 0.0f;
@@ -107,6 +111,75 @@ void RigidBody2D::snapToGrid(int N) {
     const float h = 1.0f / N;
     position[0] = (std::floor(position[0] / h + 0.5f)) * h;
     position[1] = (std::floor(position[1] / h + 0.5f)) * h;
+}
+
+// Find closest point on the surface and outward normal
+void RigidBody2D::closestSurfacePoint(const Vec2f& p, Vec2f& outClosest, Vec2f& outNormal) const {
+    // closest point is along the radius, normal is radial
+    if (shape == CIRCLE) {
+        Vec2f delta = p - position;
+        float dist = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]);
+        if (dist < 1e-6f) {
+            outNormal = Vec2f(1.0f, 0.0f);
+            outClosest = position + outNormal * radius;
+        } else {
+            outNormal = delta / dist;
+            outClosest = position + outNormal * radius;
+        }
+        return;
+    }
+    
+    // BOX
+    Vec2f q = rotateVec(p - position, -angle);
+    Vec2f q_clamped(std::max(-halfSize[0], std::min(halfSize[0], q[0])),
+                    std::max(-halfSize[1], std::min(halfSize[1], q[1])));
+    
+    // If p is inside the box, push it to the nearest edge
+    bool inside = false;
+    if (std::fabs(q[0]) < halfSize[0] && std::fabs(q[1]) < halfSize[1]) {
+        inside = true;
+        float dx = halfSize[0] - std::fabs(q[0]);
+        float dy = halfSize[1] - std::fabs(q[1]);
+        if (dx < dy) {
+            q_clamped[0] = (q[0] > 0) ? halfSize[0] : -halfSize[0];
+        } else {
+            q_clamped[1] = (q[1] > 0) ? halfSize[1] : -halfSize[1];
+        }
+    }
+    
+    // Calculate local normal and closest point in world coordinates
+    Vec2f localNormal = inside ? (q_clamped - q) : (q - q_clamped);
+    float dist = std::sqrt(localNormal[0] * localNormal[0] + localNormal[1] * localNormal[1]);
+    if (dist < 1e-6f) {
+        if (std::fabs(q_clamped[0]) == halfSize[0]) {
+            localNormal = Vec2f((q_clamped[0] > 0) ? 1.0f : -1.0f, 0.0f);
+        } else {
+            localNormal = Vec2f(0.0f, (q_clamped[1] > 0) ? 1.0f : -1.0f);
+        }
+    } else {
+        localNormal = localNormal / dist;
+    }
+    
+    // back to world space
+    outNormal = rotateVec(localNormal, angle);
+    outClosest = position + rotateVec(q_clamped, angle);
+}
+
+// Calculate orientation axes and corners
+void RigidBody2D::getAxesAndCorners(Vec2f axes[2], Vec2f corners[4]) const {
+    // apply rotation to local axes to get world axes
+    axes[0] = rotateVec(Vec2f(1.0f, 0.0f), angle);
+    axes[1] = rotateVec(Vec2f(0.0f, 1.0f), angle);
+
+    // Local corners before rotation
+    Vec2f localCorners[4] = {
+        Vec2f(-halfSize[0], -halfSize[1]), Vec2f( halfSize[0], -halfSize[1]),
+        Vec2f( halfSize[0],  halfSize[1]), Vec2f(-halfSize[0],  halfSize[1])
+    };
+    // Rotate and translate to world space
+    for (int k = 0; k < 4; ++k) {
+        corners[k] = position + rotateVec(localCorners[k], angle);
+    }
 }
 
 // Immediate-mode OpenGL drawing. The line/spoke shows orientation so rotation

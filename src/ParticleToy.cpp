@@ -1020,7 +1020,7 @@ static void motion_func(int x, int y)
 {
 	if (inFluidScene())
 	{
-		fluidScene.motion(x, y, win_x, win_y);
+		fluidScene.motion(x, y, win_x, win_y, dt);
 		return;
 	}
 	Vec2f worldPos = screenToWorld(x,y);
@@ -1037,7 +1037,7 @@ static void motion_func(int x, int y)
 static void reshape_func(int width, int height)
 {
 	glutSetWindow(win_id);
-	glutReshapeWindow(width, height);
+	glViewport(0, 0, width, height);
 
 	win_x = width;
 	win_y = height;

@@ -37,12 +37,14 @@ public:
     // Velocity of a point on/in the rigid body: linear velocity plus the 2D
     // angular contribution omega x r = (-omega*r_y, omega*r_x).
     Vec2f surfaceVelocity(const Vec2f& worldPoint) const;
-    void integrate(float dt, bool allowRotation);
+    void integrate(float dt, bool allowRotation, bool applyGravity);
     // Apply an impulse at a contact/sample point. If rotation is enabled, the
     // impulse also changes angular velocity through torque r x impulse.
     void applyImpulse(const Vec2f& impulse, const Vec2f& contactPoint, bool allowRotation);
     // Assignment requirement for dragged moving solids: after release they come
     // to rest at an exact grid offset.
     void snapToGrid(int N);
+    void closestSurfacePoint(const Vec2f& p, Vec2f& outClosest, Vec2f& outNormal) const;
+    void getAxesAndCorners(Vec2f axes[2], Vec2f corners[4]) const;
     void draw() const;
 };
