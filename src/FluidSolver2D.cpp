@@ -32,6 +32,8 @@ void FluidSolver2D::resize(int n) {
     m_solid.assign(s, 0);
     m_wallX.assign(s, 0);
     m_wallY.assign(s, 0);
+    m_isWater.assign(s, false);
+    m_waterParticles.clear();
     addOuterWalls();
 }
 
@@ -64,6 +66,28 @@ void FluidSolver2D::clearSolids() {
     addOuterWalls();
 }
 
+void FluidSolver2D::initWater(float fillRatio) {
+    m_waterParticles.clear();
+    int maxY = std::max(1, static_cast<int>(m_N * fillRatio));
+    // create grid 3x3 particles in each cell
+    for (int j = 1; j <= maxY; ++j) {
+        for (int i = 1; i <= m_N; ++i) {
+            for (int py = 0; py < 3; ++py) {
+                for (int px = 0; px < 3; ++px) {
+                    float x = i + (px + 0.5f) / 3.0f;
+                    float y = j + (py + 0.5f) / 3.0f;
+                    m_waterParticles.push_back(Vec2f(x, y));
+                }
+            }
+        }
+    }
+}
+
+void FluidSolver2D::clearWater() {
+    m_waterParticles.clear();
+    std::fill(m_isWater.begin(), m_isWater.end(), false);
+}
+
 // The assignment states that the outside of the grid is solid. We represent
 // this exactly the same way as internal edge walls: blocked vertical/horizontal
 // edges around the active 1..N cells.
@@ -80,11 +104,15 @@ void FluidSolver2D::addOuterWalls() {
 
 void FluidSolver2D::addDensityCell(int i, int j, float amount) {
     if (i < 1 || i > m_N || j < 1 || j > m_N || isSolidCell(i, j)) return;
+    // only add density to water cells or to all fluid cells
+    if (!m_waterParticles.empty() && !m_isWater[ix(i, j)]) return;
     m_densityPrev[ix(i, j)] += amount;
 }
 
 void FluidSolver2D::addVelocityCell(int i, int j, float amountU, float amountV) {
     if (i < 1 || i > m_N || j < 1 || j > m_N || isSolidCell(i, j)) return;
+    // only add vel to water cells or to all fluid cells
+    if (!m_waterParticles.empty() && !m_isWater[ix(i, j)]) return;
     m_uPrev[ix(i, j)] += amountU;
     m_vPrev[ix(i, j)] += amountV;
 }
@@ -107,6 +135,7 @@ void FluidSolver2D::addVelocityAt(float x, float y, float amountU, float amountV
 
 void FluidSolver2D::addTemperatureCell(int i, int j, float amount) {
     if (i < 1 || i > m_N || j < 1 || j > m_N || isSolidCell(i, j)) return;
+    if (!m_waterParticles.empty() && !m_isWater[ix(i, j)]) return;
     m_temperaturePrev[ix(i, j)] += amount;
 }
 
@@ -389,6 +418,11 @@ void FluidSolver2D::project(std::vector<float>& u, std::vector<float>& v, std::v
         for (int j = 1; j <= m_N; ++j) {
             for (int i = 1; i <= m_N; ++i) {
                 if (isSolidCell(i, j)) continue;
+                // only solve for water cells
+                if (!m_waterParticles.empty() && !m_isWater[ix(i, j)]) {
+                    p[ix(i, j)] = 0.0f;
+                    continue;
+                }
                 float sum = 0.0f;
                 int count = 0;
                 if (!isBlocked(i, j, i - 1, j)) { sum += p[ix(i - 1, j)]; ++count; }
@@ -404,6 +438,7 @@ void FluidSolver2D::project(std::vector<float>& u, std::vector<float>& v, std::v
     for (int j = 1; j <= m_N; ++j) {
         for (int i = 1; i <= m_N; ++i) {
             if (isSolidCell(i, j)) continue;
+            if (!m_waterParticles.empty() && !m_isWater[ix(i, j)]) continue;
             if (!isBlocked(i, j, i + 1, j) && !isBlocked(i, j, i - 1, j))
                 u[ix(i, j)] -= 0.5f * m_N * (p[ix(i + 1, j)] - p[ix(i - 1, j)]);
             else if (isBlocked(i, j, i + 1, j))
@@ -417,6 +452,17 @@ void FluidSolver2D::project(std::vector<float>& u, std::vector<float>& v, std::v
                 v[ix(i, j)] -= 0.5f * m_N * (p[ix(i, j)] - p[ix(i, j - 1)]);
             else if (isBlocked(i, j, i, j - 1))
                 v[ix(i, j)] -= 0.5f * m_N * (p[ix(i, j + 1)] - p[ix(i, j)]);
+        }
+    }
+    // zero out velocity for non-water cells
+    if (!m_waterParticles.empty()) {
+        for (int j = 1; j <= m_N; ++j) {
+            for (int i = 1; i <= m_N; ++i) {
+                if (!m_isWater[ix(i, j)] && !isSolidCell(i, j)) {
+                    u[ix(i, j)] = 0.0f;
+                    v[ix(i, j)] = 0.0f;
+                }
+            }
         }
     }
     setBoundary(1, u);
@@ -450,6 +496,7 @@ void FluidSolver2D::applyVorticityConfinement(float dt) {
     for (int j = 2; j <= m_N - 1; ++j) {
         for (int i = 2; i <= m_N - 1; ++i) {
             if (isSolidCell(i, j)) continue;
+            if (!m_waterParticles.empty() && !m_isWater[ix(i, j)]) continue;
             const float dvdx = 0.5f * (m_v[ix(i + 1, j)] - m_v[ix(i - 1, j)]);
             const float dudy = 0.5f * (m_u[ix(i, j + 1)] - m_u[ix(i, j - 1)]);
             curl[ix(i, j)] = dvdx - dudy;
@@ -458,6 +505,7 @@ void FluidSolver2D::applyVorticityConfinement(float dt) {
     for (int j = 2; j <= m_N - 1; ++j) {
         for (int i = 2; i <= m_N - 1; ++i) {
             if (isSolidCell(i, j)) continue;
+            if (!m_waterParticles.empty() && !m_isWater[ix(i, j)]) continue;
             const float gradX = 0.5f * (std::fabs(curl[ix(i + 1, j)]) - std::fabs(curl[ix(i - 1, j)]));
             const float gradY = 0.5f * (std::fabs(curl[ix(i, j + 1)]) - std::fabs(curl[ix(i, j - 1)]));
             const float len = std::sqrt(gradX * gradX + gradY * gradY) + 1e-6f;
@@ -479,15 +527,17 @@ void FluidSolver2D::applyVorticityConfinement(float dt) {
 // pushes it up, making hot air rise. The force is added to the velocity field
 // before the diffuse/project velocity solve, exactly like the vorticity force.
 void FluidSolver2D::applyBuoyancy(float dt) {
-    if (!m_useBuoyancy) return;
-    if (m_buoyancyAlpha <= 0.0f && m_buoyancyBeta <= 0.0f) return;
-    for (int j = 1; j <= m_N; ++j) {
-        for (int i = 1; i <= m_N; ++i) {
-            if (isSolidCell(i, j)) continue;
-            const int k = ix(i, j);
-            const float f = -m_buoyancyAlpha * m_density[k]
-                            + m_buoyancyBeta * (m_temperature[k] - m_ambientTemperature);
-            m_v[k] += dt * f;
+    // Apply standard smoke thermal buoyancy force
+    if (m_useBuoyancy && (m_buoyancyAlpha > 0.0f || m_buoyancyBeta > 0.0f)) {
+        for (int j = 1; j <= m_N; ++j) {
+            for (int i = 1; i <= m_N; ++i) {
+                if (isSolidCell(i, j)) continue;
+                if (!m_waterParticles.empty() && !m_isWater[ix(i, j)]) continue;
+                const int k = ix(i, j);
+                const float f = -m_buoyancyAlpha * m_density[k]
+                                + m_buoyancyBeta * (m_temperature[k] - m_ambientTemperature);
+                m_v[k] += dt * f;
+            }
         }
     }
     setBoundary(2, m_v);
@@ -513,6 +563,15 @@ void FluidSolver2D::applySolidVelocities() {
 // the velocity solve so those forces affect the current frame.
 void FluidSolver2D::step(float dt) {
     const auto t0 = std::chrono::high_resolution_clock::now();
+    
+    // clear water cell flags and rebuild from particle positions
+    std::fill(m_isWater.begin(), m_isWater.end(), false);
+    for (const Vec2f& p : m_waterParticles) {
+        int i = std::max(1, std::min(m_N, static_cast<int>(p[0])));
+        int j = std::max(1, std::min(m_N, static_cast<int>(p[1])));
+        m_isWater[ix(i, j)] = true;
+    }
+    
     rebuildObjectWalls();
     addSource(m_u, m_uPrev, dt);
     addSource(m_v, m_vPrev, dt);
@@ -555,10 +614,23 @@ void FluidSolver2D::step(float dt) {
     for (float& t : m_temperature) t += (m_ambientTemperature - t) * 0.01f;
     clearSources();
 
+    // Advect water particles with vel field
+    for (Vec2f& p : m_waterParticles) {
+        float u_vel = bilinearSample(m_u, p[0], p[1]);
+        float v_vel = bilinearSample(m_v, p[0], p[1]);
+        if (!std::isfinite(u_vel)) u_vel = 0.0f;
+        if (!std::isfinite(v_vel)) v_vel = 0.0f;
+        p[0] += u_vel * dt * m_N;
+        p[1] += v_vel * dt * m_N;
+        // Clamp after finite check
+        p[0] = std::isfinite(p[0]) ? std::max(1.5f, std::min(m_N + 0.5f, p[0])) : 1.5f;
+        p[1] = std::isfinite(p[1]) ? std::max(1.5f, std::min(m_N + 0.5f, p[1])) : 1.5f;
+    }
+
     const auto t1 = std::chrono::high_resolution_clock::now();
     m_lastStepMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
     ++m_timingSamples;
-    const double alpha = 0.05; // EMA: settles ~60 steps after a feature toggle.
+    const double alpha = 0.05;
     m_avgStepMs = (m_timingSamples == 1) ? m_lastStepMs
                                          : (1.0 - alpha) * m_avgStepMs + alpha * m_lastStepMs;
 }

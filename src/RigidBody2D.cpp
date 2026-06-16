@@ -88,10 +88,28 @@ void RigidBody2D::integrate(float dt, bool allowRotation, bool applyGravity) {
     else angularVelocity = 0.0f;
 
     // Keep demo objects in the fluid box.
-    if (position[0] < radius) { position[0] = radius; velocity[0] *= -0.3f; }
-    if (position[0] > 1.0f - radius) { position[0] = 1.0f - radius; velocity[0] *= -0.3f; }
-    if (position[1] < radius) { position[1] = radius; velocity[1] *= -0.3f; }
-    if (position[1] > 1.0f - radius) { position[1] = 1.0f - radius; velocity[1] *= -0.3f; }
+    if (shape == CIRCLE) {
+        if (position[0] < radius) { position[0] = radius; velocity[0] *= -0.3f; }
+        if (position[0] > 1.0f - radius) { position[0] = 1.0f - radius; velocity[0] *= -0.3f; }
+        if (position[1] < radius) { position[1] = radius; velocity[1] *= -0.3f; }
+        if (position[1] > 1.0f - radius) { position[1] = 1.0f - radius; velocity[1] *= -0.3f; }
+    } else {
+        Vec2f axes[2];
+        Vec2f corners[4];
+        getAxesAndCorners(axes, corners);
+        float minX = 1e9f, maxX = -1e9f;
+        float minY = 1e9f, maxY = -1e9f;
+        for (int k = 0; k < 4; ++k) {
+            minX = std::min(minX, corners[k][0]);
+            maxX = std::max(maxX, corners[k][0]);
+            minY = std::min(minY, corners[k][1]);
+            maxY = std::max(maxY, corners[k][1]);
+        }
+        if (minX < 0.0f) { position[0] -= minX; if (velocity[0] < 0.0f) velocity[0] *= -0.3f; }
+        if (maxX > 1.0f) { position[0] -= (maxX - 1.0f); if (velocity[0] > 0.0f) velocity[0] *= -0.3f; }
+        if (minY < 0.0f) { position[1] -= minY; if (velocity[1] < 0.0f) velocity[1] *= -0.3f; }
+        if (maxY > 1.0f) { position[1] -= (maxY - 1.0f); if (velocity[1] > 0.0f) velocity[1] *= -0.3f; }
+    }
 }
 
 // Linear impulse changes v by J/m; angular impulse changes omega by

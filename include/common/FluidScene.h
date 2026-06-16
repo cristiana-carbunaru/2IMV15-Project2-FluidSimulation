@@ -88,4 +88,5 @@ private:
     void drawScalarField(int mode) const;
     void drawSolidGrid() const;
     void drawTracersAndCloth() const;
+    void drawWaterParticles() const;
 };

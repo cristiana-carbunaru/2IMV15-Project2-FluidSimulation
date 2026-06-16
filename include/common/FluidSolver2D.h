@@ -101,6 +101,10 @@ public:
     const std::vector<float>& densityField() const { return m_density; }
     const std::vector<float>& temperatureField() const { return m_temperature; }
     const std::vector<unsigned char>& solidField() const { return m_solid; }
+    
+    void initWater(float fillRatio = 0.33f);
+    void clearWater();
+    const std::vector<Vec2f>& waterParticles() const { return m_waterParticles; }
 
     // Timing instrumentation step(), avgStepMs() 
     double lastStepMs() const { return m_lastStepMs; }
@@ -126,6 +130,9 @@ private:
     std::vector<float> m_solidU, m_solidV;
     std::vector<unsigned char> m_solid;
     std::vector<unsigned char> m_wallX, m_wallY;
+    
+    std::vector<Vec2f> m_waterParticles;
+    std::vector<bool> m_isWater;
 
     double m_lastStepMs = 0.0;
     double m_avgStepMs = 0.0;

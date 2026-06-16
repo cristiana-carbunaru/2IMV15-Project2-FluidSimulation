@@ -95,13 +95,13 @@ void FluidScene::init() {
     seedTracers();
     buildCloth();
     rebuildSolids();
+    m_solver.initWater(0.33f);
 
-    // A little initial smoke plume and swirl. The plume is also seeded warm so
-    // the buoyancy force lifts it once the simulation runs.
-    for (int j = 25; j <= 55; ++j) {
+    // A little initial smoke plume and swirl above the water line
+    for (int j = 28; j <= 55; ++j) {
         m_solver.addDensityCell(8, j, 150.0f);
         m_solver.addTemperatureCell(8, j, 60.0f);
-        m_solver.addVelocityCell(8, j, 45.0f, 10.0f * std::sin(j * 0.2f));
+        m_solver.addVelocityCell(8, j, 8.0f, 3.0f * std::sin(j * 0.2f));
     }
 }
 
@@ -109,6 +109,7 @@ void FluidScene::clear() {
     m_solver.clear();
     seedTracers();
     buildCloth();
+    m_solver.initWater(0.33f);
 }
 
 // Passive tracer particles: they do not affect the fluid, but they make the
@@ -468,10 +469,38 @@ void FluidScene::step(float dt) {
     const auto sceneT0 = std::chrono::high_resolution_clock::now();
     m_solver.enableVorticity(m_enableVorticity);
     m_solver.enableBuoyancy(m_enableBuoyancy);
+
     for (RigidBody2D& body : m_bodies) {
         if (!body.selected && !body.fixed) body.integrate(dt, m_enableRigidRotation, m_enableGravity);
     }
+
     collideBodies();
+
+    for (RigidBody2D& body : m_bodies) {
+        if (!body.selected && !body.fixed) {
+            if (body.shape == RigidBody2D::CIRCLE) {
+                body.position[0] = std::max(body.radius, std::min(1.0f - body.radius, body.position[0]));
+                body.position[1] = std::max(body.radius, std::min(1.0f - body.radius, body.position[1]));
+            } else {
+                Vec2f axes[2];
+                Vec2f corners[4];
+                body.getAxesAndCorners(axes, corners);
+                float minX = 1e9f, maxX = -1e9f;
+                float minY = 1e9f, maxY = -1e9f;
+                for (int k = 0; k < 4; ++k) {
+                    minX = std::min(minX, corners[k][0]);
+                    maxX = std::max(maxX, corners[k][0]);
+                    minY = std::min(minY, corners[k][1]);
+                    maxY = std::max(maxY, corners[k][1]);
+                }
+                if (minX < 0.0f) body.position[0] -= minX;
+                if (maxX > 1.0f) body.position[0] -= (maxX - 1.0f);
+                if (minY < 0.0f) body.position[1] -= minY;
+                if (maxY > 1.0f) body.position[1] -= (maxY - 1.0f);
+            }
+        }
+    }
+
     rebuildSolids();
     applyFluidForcesToBodies(dt);
     
@@ -587,6 +616,16 @@ bool FluidScene::handleKey(unsigned char key) {
     case 'G':
         m_enableGravity = !m_enableGravity;
         std::printf("Rigid-body gravity %s\n", m_enableGravity ? "enabled" : "disabled");
+        return true;
+    case 'w':
+    case 'W':
+        if (m_solver.waterParticles().empty()) {
+            m_solver.initWater(0.33f);
+            std::printf("Free-surface water simulation enabled.\n");
+        } else {
+            m_solver.clearWater();
+            std::printf("Free-surface water simulation disabled (normal smoke mode).\n");
+        }
         return true;
     case 'c':
     case 'C':
@@ -787,6 +826,20 @@ void FluidScene::drawTracersAndCloth() const {
     glEnd();
 }
 
+void FluidScene::drawWaterParticles() const {
+    const std::vector<Vec2f>& wp = m_solver.waterParticles();
+    if (wp.empty()) return;
+    const int N = m_solver.gridSize();
+    const float h = 1.0f / N;
+    glPointSize(3.0f);
+    glColor3f(0.2f, 0.5f, 1.0f);
+    glBegin(GL_POINTS);
+    for (const Vec2f& p : wp) {
+        glVertex2f((p[0] - 1.0f) * h, (p[1] - 1.0f) * h);
+    }
+    glEnd();
+}
+
 void FluidScene::draw() const {
     switch (m_viewMode) {
     case VIEW_VELOCITY:    drawVelocity(); break;
@@ -803,6 +856,7 @@ void FluidScene::draw() const {
             b.draw();
         }
     }
+    drawWaterParticles();
     drawTracersAndCloth();
 }
 
@@ -822,6 +876,7 @@ void FluidScene::printHelp() const {
     std::printf("p - toggle tracer particles and cloth\n");
     std::printf("t - toggle temperature buoyancy (hot smoke rises)\n");
     std::printf("g - toggle rigid-body gravity\n");
+    std::printf("w - toggle free-surface water simulation (marker particles)\n");
     std::printf("c - clear fluid fields\n");
     std::printf("s - cycle back to Project 1 scenes\n");
     std::printf("================================\n\n");
