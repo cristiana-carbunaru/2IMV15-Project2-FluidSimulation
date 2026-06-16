@@ -692,8 +692,26 @@ void FluidScene::motion(int x, int y, int winX, int winY, float dt) {
         Vec2f old = b.position;
         float oldAngle = b.angle;
         b.position = p + m_grabOffset;
-        b.position[0] = std::max(b.radius, std::min(1.0f - b.radius, b.position[0]));
-        b.position[1] = std::max(b.radius, std::min(1.0f - b.radius, b.position[1]));
+        if (b.shape == RigidBody2D::CIRCLE) {
+            b.position[0] = std::max(b.radius, std::min(1.0f - b.radius, b.position[0]));
+            b.position[1] = std::max(b.radius, std::min(1.0f - b.radius, b.position[1]));
+        } else {
+            Vec2f axes[2];
+            Vec2f corners[4];
+            b.getAxesAndCorners(axes, corners);
+            float minX = 1e9f, maxX = -1e9f;
+            float minY = 1e9f, maxY = -1e9f;
+            for (int k = 0; k < 4; ++k) {
+                minX = std::min(minX, corners[k][0]);
+                maxX = std::max(maxX, corners[k][0]);
+                minY = std::min(minY, corners[k][1]);
+                maxY = std::max(maxY, corners[k][1]);
+            }
+            if (minX < 0.0f) b.position[0] -= minX;
+            if (maxX > 1.0f) b.position[0] -= (maxX - 1.0f);
+            if (minY < 0.0f) b.position[1] -= minY;
+            if (maxY > 1.0f) b.position[1] -= (maxY - 1.0f);
+        }
         b.velocity = (b.position - old) / dt;
         if (m_enableRigidRotation) {
             b.angle += delta[0] * 8.0f;
