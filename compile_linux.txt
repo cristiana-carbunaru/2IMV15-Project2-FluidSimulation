@@ -1,24 +1,2 @@
-Linux build notes for Project 2:
-
-Install dependencies first, e.g. on Ubuntu/Debian:
-
-    sudo apt update
-    sudo apt install build-essential cmake freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev libpng-dev
-
-CLion/CMake build:
-
-    Open this folder in CLion and build the `project2` target.
-
-Command-line CMake build:
-
-    mkdir -p build
-    cd build
-    cmake ..
-    cmake --build .
-    ../bin/project2
-
-Makefile build:
-
-    make clean
-    make
-    ./bin/project2
+- Go in the folder where you extracted the skeleton code, open a shell window and type make clean and then make. 
+  These commands should compile the skeleton project. If compilation succeeded, the executable project2.exe should be in the bin subfolder.
