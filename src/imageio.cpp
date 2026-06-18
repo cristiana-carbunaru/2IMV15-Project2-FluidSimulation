@@ -6,11 +6,6 @@
 #include <vector>
 
 #ifdef IMAGEIO_USE_LIBPNG
-// Original Project 1/libpng path:
-// This branch keeps the same idea as Project 1: libpng performs general PNG
-// decoding/encoding.  It should only be enabled when the compiler architecture
-// matches the libpng binaries.  In the original Windows course bundle those
-// binaries are 32-bit, so CLion's default 64-bit MinGW must not use this branch.
 #include <png.h>
 #endif
 
@@ -22,8 +17,6 @@ static unsigned char *_loadImgError(int *width, int *height)
     return nullptr;
 }
 
-// Returns true iff the string s ends with postfix.  Kept intentionally simple
-// because the course code historically passed mutable char* file names.
 static bool _endsWith(const char *s, const char *postfix)
 {
     if (!s || !postfix) return false;
@@ -116,8 +109,6 @@ static unsigned char *_loadImageRGBApng(char *fileName, int *width, int *height)
         return _loadImgError(width, height);
     }
 
-    // The simulation uses OpenGL-style bottom-left image origin.  PNG files are
-    // stored top-to-bottom, so we flip rows while reading.
     std::vector<png_bytep> row_pointers(*height);
     for (int y = 0; y < *height; ++y)
         row_pointers[y] = reinterpret_cast<png_bytep>(buffer + ((*height) - 1 - y) * (*width) * 4);
@@ -177,14 +168,6 @@ static bool _saveImageRGBApng(char *fileName, unsigned char *buffer, int width, 
 }
 
 #else
-
-// Built-in PNG fallback for 64-bit CLion builds:
-// The fallback writes valid RGBA PNG files without libpng by using the PNG format
-// with uncompressed DEFLATE blocks. Files are larger than normal compressed PNGs,
-// but they open in standard image viewers and avoid the 32-bit/64-bit library
-// mismatch that caused CLion to fail. The matching loader below supports the
-// exact simple PNG variant written here (RGBA, no interlace, filter 0, stored
-// DEFLATE blocks). General PNG loading remains the job of the libpng branch.
 
 static void writeU32BE(std::vector<unsigned char> &out, unsigned int value)
 {
@@ -248,8 +231,6 @@ static std::vector<unsigned char> zlibStoreOnly(const std::vector<unsigned char>
 {
     std::vector<unsigned char> z;
 
-    // zlib header: CM=8, 32K window, fastest/no compression flag.  0x7801 is
-    // valid because the two-byte value is divisible by 31, as required by zlib.
     z.push_back(0x78);
     z.push_back(0x01);
 
@@ -304,9 +285,6 @@ static bool inflateStoreOnly(const std::vector<unsigned char> &z, std::vector<un
         pos += len;
     }
 
-    // Four Adler-32 bytes should remain.  We do not reject on checksum mismatch
-    // because these images are only used as optional screenshots, but the bytes
-    // must at least be present.
     return pos + 4 <= z.size();
 }
 

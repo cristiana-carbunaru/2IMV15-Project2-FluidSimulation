@@ -10,7 +10,7 @@ void MouseSpringForce::apply() {
     Vec2f l = m_particle->m_Position - m_mousePos; // vector from mouse to particle
     float dist = sqrt(l[0] * l[0] + l[1] * l[1]);
     if (dist < 1e-6) return; // avoid division by zero
-    
+
     // Hooke's law
     Vec2f l_normalized = l / dist;
     float force_magnitude = -(m_ks * (dist - 0.0f) + m_kd * (m_particle->m_Velocity * l_normalized));

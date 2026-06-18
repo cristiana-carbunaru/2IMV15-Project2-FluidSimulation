@@ -8,7 +8,6 @@
 #include "ConstraintSolver.h"
 #include "linearSolver.h"
 
-
 #include <vector>
 #include <cmath>
 
@@ -18,11 +17,10 @@
 extern int solver_type;
 extern float dt;
 
-/* get state from particle into dst */
 void ParticleGetState(std::vector<Particle*> pVector, std::vector<float> &dst) {
 	// clear dst
 	dst.clear();
-	
+
 	int ii, size = pVector.size();
 
 	for(ii=0; ii<size; ii++)
@@ -34,7 +32,6 @@ void ParticleGetState(std::vector<Particle*> pVector, std::vector<float> &dst) {
 	}
 }
 
-/* set state from src into particle */
 void ParticleSetState(std::vector<Particle*> pVector, const std::vector<float> &src) {
 	int ii, size = pVector.size();
 	int ind = 0;
@@ -48,7 +45,6 @@ void ParticleSetState(std::vector<Particle*> pVector, const std::vector<float> &
 	}
 }
 
-/* calculate derivative, place in dst */
 void ParticleDerivative(std::vector<Particle*> pVector, 
 	std::vector<Force*> fVector, 
 	std::vector<Constraint*> cVector,
@@ -56,7 +52,7 @@ void ParticleDerivative(std::vector<Particle*> pVector,
 {
 	int ii, size = pVector.size();
 	dst.clear();
-	
+
 	// zero the force accumulation
 	for(ii=0; ii<size; ii++)
 	{
@@ -80,7 +76,7 @@ void ParticleDerivative(std::vector<Particle*> pVector,
 		dst.push_back(pVector[ii]->m_Force[0] / pVector[ii]->m_Mass);
 		dst.push_back(pVector[ii]->m_Force[1] / pVector[ii]->m_Mass);
 	}
-	
+
 }
 
 // Euler solver
@@ -114,19 +110,19 @@ void midpoint_step(std::vector<Particle*> pVector,
 	ParticleGetState(pVector, state);
 	// get derivative
 	ParticleDerivative(pVector, fVector, cVector, derivative);
-	
+
 	// Euler step
 	midState.resize(state.size());
 	for (size_t ii = 0; ii < state.size(); ++ii) {
 		midState[ii] = state[ii] + 0.5f * deltaT * derivative[ii];
 	}
-	
+
 	// set particles to midpoint state
 	ParticleSetState(pVector, midState);
-	
+
 	// evaluate f at the midpoint
 	ParticleDerivative(pVector, fVector, cVector, midDerivative);
-	
+
 	// take a step using the midpoint value
 	for (size_t ii = 0; ii < state.size(); ++ii) {
 		state[ii] += midDerivative[ii] * deltaT;
@@ -143,10 +139,10 @@ void rk4_step(std::vector<Particle*> pVector,
 	std::vector<float> state, k1, k2, k3, k4;
 	// get state
 	ParticleGetState(pVector, state);
-	
+
 	// k1 = f(x)
 	ParticleDerivative(pVector, fVector, cVector, k1);
-	
+
 	// k2 = f(x + 0.5*dt*k1)
 	std::vector<float> tempState(state.size());
 	for (size_t ii = 0; ii < state.size(); ++ii) {
@@ -154,21 +150,21 @@ void rk4_step(std::vector<Particle*> pVector,
 	}
 	ParticleSetState(pVector, tempState);
 	ParticleDerivative(pVector, fVector, cVector, k2);
-	
+
 	// k3 = f(x + 0.5*dt*k2)
 	for (size_t ii = 0; ii < state.size(); ++ii) {
 		tempState[ii] = state[ii] + 0.5f * deltaT * k2[ii];
 	}
 	ParticleSetState(pVector, tempState);
 	ParticleDerivative(pVector, fVector, cVector, k3);
-	
+
 	// k4 = f(x + dt*k3)
 	for (size_t ii = 0; ii < state.size(); ++ii) {
 		tempState[ii] = state[ii] + deltaT * k3[ii];
 	}
 	ParticleSetState(pVector, tempState);
 	ParticleDerivative(pVector, fVector, cVector, k4);
-	
+
 	// Runge-Kutta of order 4: x_new = x + (dt/6)*(k1 + 2*k2 + 2*k3 + k4)
 	for (size_t ii = 0; ii < state.size(); ++ii) {
 		state[ii] += (deltaT / 6.0f) * (k1[ii] + 2.0f * k2[ii] + 2.0f * k3[ii] + k4[ii]);
@@ -214,7 +210,7 @@ public:
 void implicit_euler(std::vector<Particle*>& pVector, std::vector<Force*>& fVector, std::vector<Constraint*>& cVector, float dt) {
     int N = pVector.size();
     int N2 = N * 2;
-    
+
     std::vector<double> x(N2, 0.0); 
     std::vector<double> b(N2, 0.0); 
 

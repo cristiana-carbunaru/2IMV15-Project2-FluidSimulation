@@ -1,9 +1,3 @@
-// RigidBody2D.cpp:
-// Rigid body helper for the coupled fluid scene. The implementation uses the
-// basic formulas from rigid-body lectures: mass/inertia, explicit integration,
-// surface velocity, and impulses. It is intentionally lightweight and demo-
-// oriented.
-
 #include "RigidBody2D.h"
 #include "GLCompat.h"
 #include <algorithm>
@@ -58,23 +52,17 @@ RigidBody2D RigidBody2D::makeCircle(const Vec2f& center, float r, float m, bool 
     return b;
 }
 
-// Point-in-body test used to rasterize the object into occupied fluid cells and
-// to detect mouse picking. Boxes are tested in local coordinates.
 bool RigidBody2D::contains(const Vec2f& p) const {
     const Vec2f q = rotateVec(p - position, -angle);
     if (shape == CIRCLE) return q * q <= radius * radius;
     return std::fabs(q[0]) <= halfSize[0] && std::fabs(q[1]) <= halfSize[1];
 }
 
-// Moving solid boundary velocity imposed on the fluid. Rotation matters here:
-// without omega x r, rotating bodies would not drag fluid tangentially.
 Vec2f RigidBody2D::surfaceVelocity(const Vec2f& worldPoint) const {
     const Vec2f r = worldPoint - position;
     return velocity + Vec2f(-angularVelocity * r[1], angularVelocity * r[0]);
 }
 
-// Explicit Euler integration for demo motion. Boundaries bounce weakly so the
-// bodies remain inside the fluid domain.
 void RigidBody2D::integrate(float dt, bool allowRotation, bool applyGravity) {
     previousPosition = position;
     previousAngle = angle;
@@ -112,8 +100,6 @@ void RigidBody2D::integrate(float dt, bool allowRotation, bool applyGravity) {
     }
 }
 
-// Linear impulse changes v by J/m; angular impulse changes omega by
-// I^{-1}(r x J). This is reused for collision response and fluid drag torque.
 void RigidBody2D::applyImpulse(const Vec2f& impulse, const Vec2f& contactPoint, bool allowRotation) {
     if (fixed) return;
     velocity += impulse * invMass;
@@ -123,8 +109,6 @@ void RigidBody2D::applyImpulse(const Vec2f& impulse, const Vec2f& contactPoint, 
     }
 }
 
-// Snap the centre to the nearest cell spacing 1/N. This is called when a
-// user releases a dragged object, matching the assignment requirement.
 void RigidBody2D::snapToGrid(int N) {
     const float h = 1.0f / N;
     position[0] = (std::floor(position[0] / h + 0.5f)) * h;
@@ -146,12 +130,12 @@ void RigidBody2D::closestSurfacePoint(const Vec2f& p, Vec2f& outClosest, Vec2f& 
         }
         return;
     }
-    
+
     // BOX
     Vec2f q = rotateVec(p - position, -angle);
     Vec2f q_clamped(std::max(-halfSize[0], std::min(halfSize[0], q[0])),
                     std::max(-halfSize[1], std::min(halfSize[1], q[1])));
-    
+
     // If p is inside the box, push it to the nearest edge
     bool inside = false;
     if (std::fabs(q[0]) < halfSize[0] && std::fabs(q[1]) < halfSize[1]) {
@@ -164,7 +148,7 @@ void RigidBody2D::closestSurfacePoint(const Vec2f& p, Vec2f& outClosest, Vec2f& 
             q_clamped[1] = (q[1] > 0) ? halfSize[1] : -halfSize[1];
         }
     }
-    
+
     // Calculate local normal and closest point in world coordinates
     Vec2f localNormal = inside ? (q_clamped - q) : (q - q_clamped);
     float dist = std::sqrt(localNormal[0] * localNormal[0] + localNormal[1] * localNormal[1]);
@@ -177,7 +161,7 @@ void RigidBody2D::closestSurfacePoint(const Vec2f& p, Vec2f& outClosest, Vec2f& 
     } else {
         localNormal = localNormal / dist;
     }
-    
+
     // back to world space
     outNormal = rotateVec(localNormal, angle);
     outClosest = position + rotateVec(q_clamped, angle);
@@ -200,8 +184,6 @@ void RigidBody2D::getAxesAndCorners(Vec2f axes[2], Vec2f corners[4]) const {
     }
 }
 
-// Immediate-mode OpenGL drawing. The line/spoke shows orientation so rotation
-// is visible in the demo video.
 void RigidBody2D::draw() const {
     if (selected) glColor3f(1.0f, 0.8f, 0.2f);
     else if (fixed) glColor3f(0.25f, 0.45f, 0.95f);

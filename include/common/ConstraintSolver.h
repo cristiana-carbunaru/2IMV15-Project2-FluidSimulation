@@ -5,7 +5,6 @@
 #include "Constraint.h"
 #include <vector>
 
-
 void solve_constraints(std::vector<Particle*>& particles,
                        std::vector<Constraint*>& constraints);
 

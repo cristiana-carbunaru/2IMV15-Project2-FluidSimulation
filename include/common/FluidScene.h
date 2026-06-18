@@ -1,10 +1,5 @@
 #pragma once
 
-// FluidScene:
-// This class owns the fluid solver, rigid bodies, tracer particles, and a small cloth patch.
-// Keeping this separate from FluidSolver2D lets the numerical solver stay readable while
-// the scene handles controls, drawing, and feature toggles required by the assignment.
-
 #include "FluidSolver2D.h"
 #include "RigidBody2D.h"
 #include <vector>
@@ -62,20 +57,12 @@ private:
     float m_forceScale;
     float m_heatAmount;
 
-    // Timing readout, full-scene cost (solver + coupling +
-    // tracers + cloth) is averaged
     double m_avgSceneMs = 0.0;
     long m_timingFrames = 0;
 
     Vec2f screenToUnit(int x, int y, int winX, int winY) const;
-    // Re-render fixed walls and moving rigid bodies into FluidSolver2D.
-    // Called after body motion so the fluid sees the current solid geometry.
     void rebuildSolids();
-    // Approximate two-way coupling: sample fluid velocity around each body and
-    // apply a drag-like impulse/torque back to the rigid body.
     void applyFluidForcesToBodies(float dt);
-    // Simple impulse/separation collision handling for boxes/disks. Resting
-    // contact is intentionally not implemented, matching the assignment option.
     void collideBodies();
     void seedTracers();
     void buildCloth();

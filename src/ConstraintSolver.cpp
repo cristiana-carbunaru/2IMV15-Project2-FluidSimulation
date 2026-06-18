@@ -98,8 +98,6 @@ void solve_constraints(std::vector<Particle*>& particles,
     const double epsilon = 1e-6;
     ConjGrad(m, &A, lambda.data(), b.data(), epsilon, &steps);
 
-    // Constraint force = J^T lambda
-    // Added to each touched particle's force
     for (int i = 0; i < m; i++) {
         Constraint* c = active_constraints[i];
         std::vector<Particle*> cp = c->getParticles();

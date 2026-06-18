@@ -15,7 +15,7 @@ public:
     std::vector<Vec2f> J_rows() const override;
 
     std::vector<Vec2f> J_dot_rows() const override;
-    
+
     void draw() override;
 
 private:
@@ -31,13 +31,13 @@ public:
     double C() const override;
 
     double C_dot() const override;
-    
+
     std::vector<Particle*> getParticles() const override;
-    
+
     std::vector<Vec2f> J_rows() const override;
-    
+
     std::vector<Vec2f> J_dot_rows() const override;
-    
+
     void draw() override;
 
 private:

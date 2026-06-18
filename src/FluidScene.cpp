@@ -1,10 +1,3 @@
-// FluidScene.cpp:
-// Interactive wrapper around FluidSolver2D. This file connects the numerical
-// methods to the required demo features: toggles, mouse-driven moving solids,
-// rotating rigid bodies, collision impulses, two-way coupling, tracers, and
-// cloth. The comments in this file explain how each assignment item is exposed
-// in the running program.
-
 #include "FluidScene.h"
 #include "GLCompat.h"
 #include <algorithm>
@@ -20,8 +13,6 @@ static Vec2f normalizeSafe(const Vec2f& v, const Vec2f& fallback = Vec2f(1.0f, 0
 }
 static float cross2D(const Vec2f& a, const Vec2f& b) { return a[0] * b[1] - a[1] * b[0]; }
 
-// Visualization views cycled by the 'v' key. VIEW_DENSITY and VIEW_VELOCITY are
-// the original two; the rest are scalar heatmaps drawn by drawScalarField.
 enum ViewMode {
     VIEW_DENSITY = 0,
     VIEW_VELOCITY,
@@ -42,10 +33,6 @@ static const char* viewName(int m) {
     }
 }
 
-// Map a value to an RGB colour. Signed fields (curl, pressure) use a diverging
-// blue(negative) - dark - red(positive) map, non-negative fields (temperature)
-// use a warm black-body-style ramp. The input is already normalized to the
-// frame's magnitude: [-1,1] for signed fields, [0,1] otherwise.
 static void setHeatColor(float t, bool signedField) {
     if (signedField) {
         const float a = std::min(1.0f, std::fabs(t));
@@ -68,16 +55,12 @@ FluidScene::FluidScene()
       m_leftDown(false), m_rightDown(false), m_lastMouse(0.0f, 0.0f), m_grabOffset(0.0f, 0.0f),
       m_sourceAmount(280.0f), m_forceScale(8.0f), m_heatAmount(80.0f) {}
 
-// Create the default demo. The first body is fixed (blue), while the two other
-// bodies are movable/rotating and can be dragged with the mouse.
 void FluidScene::init() {
     m_solver.resize(80);
     m_solver.setDiffusion(0.00002f);
     m_solver.setViscosity(0.00001f);
     m_solver.setVorticityStrength(2.0f);
     m_solver.enableVorticity(m_enableVorticity);
-    // Thermal buoyancy (optional Temperature feature): alpha weights the
-    // smoke-weight downforce, beta weights the warm-air lift.
     m_solver.setBuoyancy(0.05f, 0.3f);
     m_solver.setAmbientTemperature(0.0f);
     m_solver.setTemperatureDiffusion(0.00002f);
@@ -112,8 +95,6 @@ void FluidScene::clear() {
     m_solver.initWater(0.33f);
 }
 
-// Passive tracer particles: they do not affect the fluid, but they make the
-// velocity field visible as moving green points.
 void FluidScene::seedTracers() {
     m_tracers.clear();
     for (int j = 0; j < 11; ++j) {
@@ -126,8 +107,6 @@ void FluidScene::seedTracers() {
     }
 }
 
-// Small Project 1-style cloth patch. Two upper corners are pinned; springs are
-// structural plus diagonal shear springs, then the fluid velocity applies drag.
 void FluidScene::buildCloth() {
     m_cloth.clear();
     m_clothSprings.clear();
@@ -166,11 +145,6 @@ Vec2f FluidScene::screenToUnit(int x, int y, int winX, int winY) const {
                  std::max(0.0f, std::min(1.0f, 1.0f - y / static_cast<float>(winY))));
 }
 
-// Rebuild the solid boundary data from the current scene state.
-// 1) clear previous solids/walls but keep outer walls;
-// 2) add fixed internal grid-edge obstacles;
-// 3) rasterize rigid bodies into solid cells and store their surface velocities
-// for moving boundary conditions.
 void FluidScene::rebuildSolids() {
     m_solver.clearSolids();
     if (m_enableFixedObjects) {
@@ -206,10 +180,6 @@ void FluidScene::rebuildSolids() {
     }
 }
 
-// Approximate two-way coupling. A full method would integrate pressure and
-// shear stress around the body. For the assignment demo we sample the fluid
-// velocity around the body, compare it to the body's surface velocity, and use
-// the difference as a drag impulse. The same samples create a torque.
 void FluidScene::applyFluidForcesToBodies(float dt) {
     if (!m_enableTwoWayCoupling || !m_enableMovingSolids) return;
     for (RigidBody2D& body : m_bodies) {
@@ -245,9 +215,6 @@ void FluidScene::applyFluidForcesToBodies(float dt) {
     }
 }
 
-// Simple rigid-body contact. We use each body's bounding radius, separate
-// overlapping objects, and apply a normal impulse when they are moving together.
-// This matches the assignment permission to use impulses without resting contact.
 void FluidScene::collideBodies() {
     if (!m_enableRigidCollisions || !m_enableMovingSolids) return;
     for (size_t a = 0; a < m_bodies.size(); ++a) {
@@ -258,7 +225,7 @@ void FluidScene::collideBodies() {
             float dist = length(delta);
             float allowed = A.radius + B.radius;
             if (dist >= allowed || (A.fixed && B.fixed)) continue;
-            
+
             Vec2f n;
             float penetration = 0.0f;
 
@@ -276,12 +243,12 @@ void FluidScene::collideBodies() {
                 Vec2f cornersA[4], cornersB[4];
                 A.getAxesAndCorners(axesA, cornersA);
                 B.getAxesAndCorners(axesB, cornersB);
-                
+
                 Vec2f axesToTest[4] = { axesA[0], axesA[1], axesB[0], axesB[1] };
                 float minOverlap = 1e9f;
                 Vec2f bestAxis(0.0f, 0.0f);
                 bool disjoint = false;
-                
+
                 // Separating Axis Theorem
                 for (int i = 0; i < 4; ++i) {
                     Vec2f axis = axesToTest[i];
@@ -316,13 +283,13 @@ void FluidScene::collideBodies() {
                 RigidBody2D* circle = (A.shape == RigidBody2D::CIRCLE) ? &A : &B;
                 Vec2f closestPt, normal;
                 box->closestSurfacePoint(circle->position, closestPt, normal);
-                
+
                 // Check if circle is outside box and not overlapping
                 Vec2f cDelta = circle->position - closestPt;
                 float cDist = length(cDelta);
-                
+
                 if (cDist >= circle->radius && (cDelta * normal) >= 0.0f) continue;
-                
+
                 // Calculate contact normal and penetration depth
                 if (cDist < 1e-6f) {
                     n = normal;
@@ -349,7 +316,7 @@ void FluidScene::collideBodies() {
 
             float invSum = A.invMass + B.invMass;
             if (invSum <= 0.0f) continue;
-            
+
             if (!A.fixed) A.position -= n * (penetration * A.invMass / invSum);
             if (!B.fixed) B.position += n * (penetration * B.invMass / invSum);
 
@@ -358,13 +325,13 @@ void FluidScene::collideBodies() {
             if (vn < 0.0f) {
                 float e = 0.45f;
                 if (-vn < 0.05f) e = 0.0f; // prevent micro-bounces
-                
+
                 Vec2f rA = contactPtA - A.position; 
                 Vec2f rB = contactPtB - B.position;
                 float angA = m_enableRigidRotation ? cross2D(rA, n) * cross2D(rA, n) * A.invInertia : 0.0f;
                 float angB = m_enableRigidRotation ? cross2D(rB, n) * cross2D(rB, n) * B.invInertia : 0.0f;
                 float j = -(1.0f + e) * vn / (invSum + angA + angB);
-                
+
                 Vec2f impulse = n * j;
                 A.applyImpulse(-impulse, contactPtA, m_enableRigidRotation);
                 B.applyImpulse( impulse, contactPtB, m_enableRigidRotation);
@@ -373,15 +340,13 @@ void FluidScene::collideBodies() {
     }
 }
 
-// Let tracer particles follow the fluid by relaxing their velocity toward the
-// sampled grid velocity. Wrapping keeps them inside the demo window.
 void FluidScene::stepTracers(float dt) {
     if (!m_enableParticlesAndCloth) return;
     for (Tracer& p : m_tracers) {
         Vec2f vf = m_solver.sampleVelocity(p.position[0], p.position[1]);
         p.velocity += (vf - p.velocity) * std::min(1.0f, 6.0f * dt);
         p.position += p.velocity * dt;
-        
+
         // if tracer inside a rigid body push it out
         for (const RigidBody2D& body : m_bodies) {
             if (body.contains(p.position)) {
@@ -394,7 +359,7 @@ void FluidScene::stepTracers(float dt) {
                 }
             }
         }
-        
+
         // keep tracers inside the unit square
         if (p.position[0] < 0.02f) { p.position[0] = 0.02f; p.velocity[0] *= -0.5f; }
         if (p.position[0] > 0.98f) { p.position[0] = 0.98f; p.velocity[0] *= -0.5f; }
@@ -403,8 +368,6 @@ void FluidScene::stepTracers(float dt) {
     }
 }
 
-// Mass-spring cloth with fluid drag. Each node receives spring forces, a small
-// gravity-like force, and drag proportional to (fluidVelocity - nodeVelocity).
 void FluidScene::stepCloth(float dt) {
     if (!m_enableParticlesAndCloth) return;
     std::vector<Vec2f> forces(m_cloth.size(), Vec2f(0.0f, 0.0f));
@@ -426,45 +389,42 @@ void FluidScene::stepCloth(float dt) {
         // drag force between the fluid and the cloth node
         Vec2f fluid = m_solver.sampleVelocity(m_cloth[i].position[0], m_cloth[i].position[1]);
         Vec2f drag = (fluid - m_cloth[i].velocity) * 8.0f;
-        
+
         // limit drag
         float dragLen = length(drag);
         if (dragLen > 2.0f) drag = drag * (2.0f / dragLen);
-        
+
         // apply forces to the cloth node
         forces[i] += drag;
         forces[i] += Vec2f(0.0f, -0.15f);
-        
+
         // apply drag to solver
         m_solver.addVelocityAt(m_cloth[i].position[0], m_cloth[i].position[1], -drag[0], -drag[1], 1);
-        
+
         // node pos and vel update
         m_cloth[i].velocity += forces[i] * dt;
         m_cloth[i].velocity *= 0.995f;
         m_cloth[i].position += m_cloth[i].velocity * dt;
-        
+
         // collision with rigid bodies
         for (const RigidBody2D& body : m_bodies) {
             if (body.contains(m_cloth[i].position)) {
                 Vec2f closestPt, normal;
                 body.closestSurfacePoint(m_cloth[i].position, closestPt, normal);
                 m_cloth[i].position = closestPt + normal * 1e-4f;
-                
+
                 float vn = m_cloth[i].velocity * normal;
                 if (vn < 0.0f) {
                     m_cloth[i].velocity -= normal * vn;
                 }
             }
         }
-        
+
         m_cloth[i].position[0] = std::max(0.02f, std::min(0.98f, m_cloth[i].position[0]));
         m_cloth[i].position[1] = std::max(0.02f, std::min(0.98f, m_cloth[i].position[1]));
     }
 }
 
-// Full scene step: move bodies, handle collisions, rebuild fluid boundaries,
-// apply optional fluid-to-body impulses, advance the fluid, then advect
-// particles/cloth through the resulting velocity field.
 void FluidScene::step(float dt) {
     const auto sceneT0 = std::chrono::high_resolution_clock::now();
     m_solver.enableVorticity(m_enableVorticity);
@@ -503,25 +463,25 @@ void FluidScene::step(float dt) {
 
     rebuildSolids();
     applyFluidForcesToBodies(dt);
-    
+
     // Set the surface velocity of each moving body into the fluid solver
     for (RigidBody2D& body : m_bodies) {
         // skip fixed and mouse dragged bodies
         if (body.fixed || body.selected) continue;
-        
+
         // Compute the bounding box of the body in grid coordinates
         const int N = m_solver.gridSize();
         const float minX = std::max(0.0f, body.position[0] - body.radius - 0.02f);
         const float maxX = std::min(1.0f, body.position[0] + body.radius + 0.02f);
         const float minY = std::max(0.0f, body.position[1] - body.radius - 0.02f);
         const float maxY = std::min(1.0f, body.position[1] + body.radius + 0.02f);
-        
+
         // Convert to grid indices
         int i0 = std::max(1, static_cast<int>(minX * N));
         int i1 = std::min(N, static_cast<int>(maxX * N) + 1);
         int j0 = std::max(1, static_cast<int>(minY * N));
         int j1 = std::min(N, static_cast<int>(maxY * N) + 1);
-        
+
         // Set the surface velocity for each grid cell that is inside the body
         for (int j = j0; j <= j1; ++j) {
             for (int i = i0; i <= i1; ++i) {
@@ -543,8 +503,6 @@ void FluidScene::step(float dt) {
     stepTracers(dt);
     stepCloth(dt);
 
-    // Average the full-scene cost and report both numbers periodically. Read the
-    // console while toggling features to fill the report's timings table.
     const auto sceneT1 = std::chrono::high_resolution_clock::now();
     const double sceneMs = std::chrono::duration<double, std::milli>(sceneT1 - sceneT0).count();
     ++m_timingFrames;
@@ -560,8 +518,6 @@ void FluidScene::step(float dt) {
     }
 }
 
-// Feature toggles. The assignment asks the demo to turn features on/off, so
-// every required/extension feature has a key listed in printHelp().
 bool FluidScene::handleKey(unsigned char key) {
     switch (key) {
     case 'v':
@@ -641,8 +597,6 @@ bool FluidScene::handleKey(unsigned char key) {
     }
 }
 
-// Mouse controls. Left dragging a body demonstrates moving solids; left dragging
-// empty fluid injects velocity. Right dragging injects smoke density.
 void FluidScene::mouse(int button, int state, int x, int y, int winX, int winY) {
     Vec2f p = screenToUnit(x, y, winX, winY);
     m_lastMouse = p;
@@ -681,9 +635,6 @@ void FluidScene::mouse(int button, int state, int x, int y, int winX, int winY) 
     }
 }
 
-// Mouse motion while dragging. A moved rigid body immediately updates its
-// velocity and rasterized solid cells, so the next fluid step sees a moving
-// boundary and the body pushes the surrounding fluid.
 void FluidScene::motion(int x, int y, int winX, int winY, float dt) {
     Vec2f p = screenToUnit(x, y, winX, winY);
     Vec2f delta = p - m_lastMouse;
@@ -768,9 +719,6 @@ void FluidScene::drawVelocity() const {
     glEnd();
 }
 
-// Render one of the scalar diagnostic fields as a per-cell heatmap. The field is
-// gathered once, the frame's peak magnitude is used to auto-scale, and each cell
-// is drawn as a flat-shaded quad so the structure of the field is easy to read.
 void FluidScene::drawScalarField(int mode) const {
     const int N = m_solver.gridSize();
     const float h = 1.0f / N;
@@ -791,7 +739,6 @@ void FluidScene::drawScalarField(int mode) const {
             maxMag = std::max(maxMag, std::fabs(v));
         }
     }
-
 
     glBegin(GL_QUADS);
     for (int j = 1; j <= N; ++j) {

@@ -1,10 +1,3 @@
-// FluidSolver2D.cpp:
-// Numerical core of the Project 2 fluid simulation. The solver follows the
-// Stable Fluids algorithm (Stam 1999 / Stam GDC 2003) and then adds the extra
-// assignment features in local, commented methods. The comments deliberately
-// explain the equations in code terms so that the implementation can be read
-// together with the report/notes.
-
 #include "FluidSolver2D.h"
 #include <cstdio>
 #include <chrono>
@@ -18,8 +11,6 @@ FluidSolver2D::FluidSolver2D()
 
 FluidSolver2D::FluidSolver2D(int n) : FluidSolver2D() { resize(n); }
 
-// Allocate all fields. The +2 ghost-cell border follows Stam's original code;
-// physical cells are 1..N, and indices 0 and N+1 store boundary values.
 void FluidSolver2D::resize(int n) {
     m_N = std::max(4, n);
     const int s = size();
@@ -88,9 +79,6 @@ void FluidSolver2D::clearWater() {
     std::fill(m_isWater.begin(), m_isWater.end(), false);
 }
 
-// The assignment states that the outside of the grid is solid. We represent
-// this exactly the same way as internal edge walls: blocked vertical/horizontal
-// edges around the active 1..N cells.
 void FluidSolver2D::addOuterWalls() {
     for (int j = 1; j <= m_N; ++j) {
         m_wallX[ix(1, j)] = 1;
@@ -157,9 +145,6 @@ void FluidSolver2D::setHorizontalWall(int i, int j, bool blocked) {
     m_wallY[ix(i, j)] = blocked ? 1 : 0;
 }
 
-// Convenience helper for a fixed rectangular obstacle made only from boundary
-// edges. Notice that it does not fill the interior with solid cells; it proves
-// that the solver can mark arbitrary neighbour-cell edges as boundaries.
 void FluidSolver2D::addBoxWall(int i0, int j0, int i1, int j1) {
     if (i0 > i1) std::swap(i0, i1);
     if (j0 > j1) std::swap(j0, j1);
@@ -207,8 +192,6 @@ bool FluidSolver2D::isSolidCell(int i, int j) const {
     return m_solid[ix(i, j)] != 0;
 }
 
-// Test whether information may pass between two neighbouring cells. This method
-// is used consistently by diffusion, projection, and advection-path clipping.
 bool FluidSolver2D::isBlocked(int i0, int j0, int i1, int j1) const {
     if (i1 < 1 || i1 > m_N || j1 < 1 || j1 > m_N) return true;
     if (i0 < 1 || i0 > m_N || j0 < 1 || j0 > m_N) return true;
@@ -238,8 +221,6 @@ void FluidSolver2D::rebuildObjectWalls() {
     addOuterWalls();
 }
 
-// Stam's explicit source addition: x += dt*s. Mouse forces, density sources,
-// and temporary body impulses are placed in the source arrays before stepping.
 void FluidSolver2D::addSource(std::vector<float>& x, const std::vector<float>& s, float dt) {
     for (int i = 0; i < size(); ++i) x[i] += dt * s[i];
 }
@@ -252,10 +233,6 @@ float FluidSolver2D::valueForNeighbor(const std::vector<float>& field, int i, in
     return 0.0f;
 }
 
-// Apply boundary conditions. Parameter b follows Stam's convention:
-//   b=0 scalar field, b=1 horizontal velocity, b=2 vertical velocity.
-// At outer walls, the normal velocity component is reflected. At moving solid
-// cells, the velocity is set to the object's prescribed surface velocity.
 void FluidSolver2D::setBoundary(int b, std::vector<float>& x) {
     for (int i = 1; i <= m_N; ++i) {
         x[ix(0, i)] = b == 1 ? -x[ix(1, i)] : x[ix(1, i)];
@@ -293,10 +270,6 @@ void FluidSolver2D::setBoundary(int b, std::vector<float>& x) {
     }
 }
 
-// Gauss-Seidel relaxation for both diffusion and pressure-like solves.
-// Standard Stam denominator is c = 1 + 4a. When a cell has blocked neighbours,
-// only unblocked neighbours are included; the denominator is adjusted so walls
-// behave like zero-flux/no-through boundaries.
 void FluidSolver2D::linearSolve(int b, std::vector<float>& x, const std::vector<float>& x0, float a) {
     for (int k = 0; k < 25; ++k) {
         for (int j = 1; j <= m_N; ++j) {
@@ -315,16 +288,11 @@ void FluidSolver2D::linearSolve(int b, std::vector<float>& x, const std::vector<
     }
 }
 
-// Implicit diffusion: solve x - a*Laplacian(x) = x0. This is the Stable Fluids
-// reason diffusion stays stable for interactive time steps.
 void FluidSolver2D::diffuse(int b, std::vector<float>& x, const std::vector<float>& x0, float diff, float dt) {
     const float a = dt * diff * m_N * m_N;
     linearSolve(b, x, x0, a);
 }
 
-// Semi-Lagrangian backtrace from the centre of cell (i,j). We subdivide the
-// segment to detect crossing a blocked edge. If a wall is hit, sampling stops on
-// the fluid side of the wall instead of sampling through the solid.
 void FluidSolver2D::traceBackWithClipping(int i, int j, float& x, float& y,
                                           const std::vector<float>& u, const std::vector<float>& v, float dt) const {
     const float dt0 = dt * m_N;
@@ -352,9 +320,6 @@ void FluidSolver2D::traceBackWithClipping(int i, int j, float& x, float& y,
     x = endX; y = endY;
 }
 
-// Bilinear interpolation used by advection and by particles/cloth. Solid cells
-// contribute zero for scalar sampling; velocity boundary values are handled by
-// setBoundary/project before sampling.
 float FluidSolver2D::bilinearSample(const std::vector<float>& field, float x, float y) const {
     x = std::max(0.5f, std::min(m_N + 0.5f, x));
     y = std::max(0.5f, std::min(m_N + 0.5f, y));
@@ -374,9 +339,6 @@ float FluidSolver2D::bilinearSample(const std::vector<float>& field, float x, fl
            s1 * (t0 * val(i1, j0) + t1 * val(i1, j1));
 }
 
-// Semi-Lagrangian advection. For each destination cell, ask where the material
-// came from at the previous time step, then interpolate the old field there.
-// This mirrors Stam's advect() but uses traceBackWithClipping for boundaries.
 void FluidSolver2D::advect(int b, std::vector<float>& d, const std::vector<float>& d0,
                            const std::vector<float>& u, const std::vector<float>& v, float dt) {
     for (int j = 1; j <= m_N; ++j) {
@@ -393,10 +355,6 @@ void FluidSolver2D::advect(int b, std::vector<float>& d, const std::vector<float
     setBoundary(b, d);
 }
 
-// Pressure projection. Compute divergence, solve a Poisson equation for p, then
-// subtract grad(p). The result is approximately divergence-free. Moving solids
-// enter here through valueForNeighbor(), which supplies solid surface velocity
-// when a fluid cell neighbours an occupied cell.
 void FluidSolver2D::project(std::vector<float>& u, std::vector<float>& v, std::vector<float>& p, std::vector<float>& div) {
     for (int j = 1; j <= m_N; ++j) {
         for (int i = 1; i <= m_N; ++i) {
@@ -471,8 +429,6 @@ void FluidSolver2D::project(std::vector<float>& u, std::vector<float>& v, std::v
     applySolidVelocities();
 }
 
-// Scalar 2D vorticity at a cell centre. Reused by the curl visualization view;
-// the same expression drives applyVorticityConfinement.
 float FluidSolver2D::curl(int i, int j) const {
     if (i < 1 || i > m_N || j < 1 || j > m_N) return 0.0f;
     const float dvdx = 0.5f * (m_v[ix(i + 1, j)] - m_v[ix(i - 1, j)]);
@@ -485,11 +441,6 @@ float FluidSolver2D::pressure(int i, int j) const {
     return m_pressure[ix(i, j)];
 }
 
-// Vorticity confinement from Fedkiw, Stam, and Jensen (2001). In 2D the curl is
-// scalar: omega = dv/dx - du/dy. We compute N = grad(|omega|)/|grad(|omega|)|
-// and add epsilon*(N x omega). Since omega points out of the screen,
-// N x omega = (Ny*omega, -Nx*omega). The paper includes an h factor; here the
-// tunable m_vorticityStrength absorbs that scale for the demo grid.
 void FluidSolver2D::applyVorticityConfinement(float dt) {
     if (!m_useVorticity || m_vorticityStrength <= 0.0f) return;
     std::vector<float> curl(size(), 0.0f);
@@ -520,12 +471,6 @@ void FluidSolver2D::applyVorticityConfinement(float dt) {
     setBoundary(2, m_v);
 }
 
-// Thermal buoyancy (Fedkiw, Stam, and Jensen 2001, "Visual Simulation of Smoke").
-// They define a buoyancy force f_buoy = (-alpha*d + beta*(T - T_ambient)) * z,
-// where z points up. Here z is the +v (vertical) direction of the grid, so the
-// dense-smoke term -alpha*d pulls fluid down while the warm term beta*(T-Tamb)
-// pushes it up, making hot air rise. The force is added to the velocity field
-// before the diffuse/project velocity solve, exactly like the vorticity force.
 void FluidSolver2D::applyBuoyancy(float dt) {
     // Apply standard smoke thermal buoyancy force
     if (m_useBuoyancy && (m_buoyancyAlpha > 0.0f || m_buoyancyBeta > 0.0f)) {
@@ -543,8 +488,6 @@ void FluidSolver2D::applyBuoyancy(float dt) {
     setBoundary(2, m_v);
 }
 
-// Keep occupied solid cells from accumulating smoke or arbitrary fluid velocity.
-// Their velocity is prescribed by the rigid body rasterization in FluidScene.
 void FluidSolver2D::applySolidVelocities() {
     for (int j = 1; j <= m_N; ++j) {
         for (int i = 1; i <= m_N; ++i) {
@@ -558,12 +501,9 @@ void FluidSolver2D::applySolidVelocities() {
     }
 }
 
-// Complete Stable Fluids update. The order is intentionally close to Stam's
-// vel_step()/dens_step(), with vorticity and solid velocity insertion before
-// the velocity solve so those forces affect the current frame.
 void FluidSolver2D::step(float dt) {
     const auto t0 = std::chrono::high_resolution_clock::now();
-    
+
     // clear water cell flags and rebuild from particle positions
     std::fill(m_isWater.begin(), m_isWater.end(), false);
     for (const Vec2f& p : m_waterParticles) {
@@ -571,7 +511,7 @@ void FluidSolver2D::step(float dt) {
         int j = std::max(1, std::min(m_N, static_cast<int>(p[1])));
         m_isWater[ix(i, j)] = true;
     }
-    
+
     rebuildObjectWalls();
     addSource(m_u, m_uPrev, dt);
     addSource(m_v, m_vPrev, dt);
@@ -599,9 +539,6 @@ void FluidSolver2D::step(float dt) {
     FLUID_SWAP(m_densityPrev, m_density);
     advect(0, m_density, m_densityPrev, m_u, m_v, dt);
 
-    // Transport temperature with the same diffuse/advect path as density so the
-    // heat that drives buoyancy moves with the flow (the heat source was already
-    // added above, before applyBuoyancy).
     FLUID_SWAP(m_temperaturePrev, m_temperature);
     diffuse(0, m_temperature, m_temperaturePrev, m_temperatureDiffusion, dt);
     FLUID_SWAP(m_temperaturePrev, m_temperature);
@@ -609,8 +546,6 @@ void FluidSolver2D::step(float dt) {
 
     // Gentle dissipation keeps the real-time demo readable instead of saturating to white.
     for (float& d : m_density) d *= 0.997f;
-    // Newtonian cooling: relax temperature back toward ambient so plumes lose lift
-    // over time instead of accelerating forever.
     for (float& t : m_temperature) t += (m_ambientTemperature - t) * 0.01f;
     clearSources();
 
@@ -635,8 +570,6 @@ void FluidSolver2D::step(float dt) {
                                          : (1.0 - alpha) * m_avgStepMs + alpha * m_lastStepMs;
 }
 
-// Sample velocity at normalized coordinates [0,1]^2. Used by tracer particles,
-// cloth drag, and approximate two-way coupling from fluid to rigid bodies.
 Vec2f FluidSolver2D::sampleVelocity(float x, float y) const {
     const float gx = std::max(0.5f, std::min(m_N + 0.5f, x * m_N + 0.5f));
     const float gy = std::max(0.5f, std::min(m_N + 0.5f, y * m_N + 0.5f));

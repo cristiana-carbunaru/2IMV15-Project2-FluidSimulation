@@ -18,11 +18,11 @@ void TouchSphereForce::apply() {
 
         if (dist > 0.0f && dist < m_radius) {
             dir = dir / dist; // normalize
-            
+
             // make force strongest at center and weakest at radius
             float falloff = 1.0f - (dist / m_radius);
             falloff = falloff * falloff; 
-            
+
             p->m_Force += dir * (m_maxForce * falloff);
         }
     }

@@ -23,14 +23,10 @@
 #include <cmath>
 #include <iostream>
 
-/* macros */
-/* external definitions (from solver) */
 extern void simulation_step(std::vector<Particle *> pVector,
 							std::vector<Force *> fVector,
 							std::vector<Constraint *> cVector,
 							float dt);
-
-/* global variables */
 
 static int N;
 static float d;
@@ -104,15 +100,7 @@ static std::vector<Constraint *> cVector;
 static MouseSpringForce* mouseSpring = NULL;
 static TouchSphereForce* touchSphereForce = NULL;
 static std::vector<Force *> fVector;
-// Single Project 2 scene object. The existing Project 1 framework calls into it
-// for update/draw/input whenever scene_type == SCENE_FLUID.
 static FluidScene fluidScene;
-
-/*
-----------------------------------------------------------------------
-free/clear/allocate simulation data
-----------------------------------------------------------------------
-*/
 
 static void free_data(void)
 {
@@ -147,7 +135,6 @@ static void clear_data(void)
 	}
 }
 
-/* Scenes */
 static void cloth_scene() {
 	// initialize walls
 	wallVector.clear();
@@ -181,8 +168,6 @@ static void cloth_scene() {
 		for (int j = 0; j < cloth_columns; ++j)
 		{
 			int idx = i * cloth_columns + j;
-			// structural springs
-			// connect to particle on the right
 			if (j < cloth_columns - 1)
 			{
 				fVector.push_back(new SpringForce(pVector[idx], pVector[idx + 1], cloth_spacing, spring_ks, spring_kd));
@@ -192,8 +177,6 @@ static void cloth_scene() {
 			{
 				fVector.push_back(new SpringForce(pVector[idx], pVector[idx + cloth_columns], cloth_spacing, spring_ks, spring_kd));
 			}
-			// shear springs
-			// connect to particle diagonally down-right
 			if (i < cloth_rows - 1 && j < cloth_columns - 1)
 			{
 				fVector.push_back(new SpringForce(pVector[idx], pVector[idx + cloth_columns + 1], cloth_spacing * sqrt(2), spring_ks, spring_kd));
@@ -203,8 +186,6 @@ static void cloth_scene() {
 			{
 				fVector.push_back(new SpringForce(pVector[idx], pVector[idx + cloth_columns - 1], cloth_spacing * sqrt(2), spring_ks, spring_kd));
 			}
-			// flexion springs
-			// horizontal (right + 2)
 			if (j < cloth_columns - 2)
 			{
 				fVector.push_back(new SpringForce(pVector[idx], pVector[idx + 2], cloth_spacing * 2, spring_ks, spring_kd));
@@ -273,9 +254,7 @@ static void hair_scene() {
     for (int i = 0; i < hair_segments - 1; ++i) {
         // structural edge
         fVector.push_back(new SpringForce(main_nodes[i], main_nodes[i+1], rest_len, spring_ks, spring_kd));
-        
-        // triangle edges
-		// main node to offset node
+
         float diag_len = sqrt(pow(perturb_offset, 2) + pow(rest_len * 0.5f, 2));
         fVector.push_back(new SpringForce(main_nodes[i], offset_nodes[i], diag_len, spring_ks, spring_kd));
         fVector.push_back(new SpringForce(main_nodes[i+1], offset_nodes[i], diag_len, spring_ks, spring_kd));
@@ -334,24 +313,24 @@ static void ball_scene() {
 	float step = 0.2f;
 	float prev_x = x_start;
 	float prev_y = -0.6f; // start height
-	
+
 	for (float x = x_start + step; x <= x_end; x += step) {
 		// rolling hills
 		float y = -0.7f + sin(x * 1.5f) * 0.15f + sin(x * 0.5f) * 0.15f;
-		
+
 		Wall floor_segment(Vec2f(prev_x, prev_y), Vec2f(x, y));
 		floor_segment.orientNormalToPoint(Vec2f((prev_x + x) / 2.0f, y + 1.0f)); // normal points up
 		wallVector.push_back(floor_segment);
-		
+
 		prev_x = x;
 		prev_y = y;
 	}
-	
+
 	// endless ceiling
 	Wall ceiling(Vec2f(x_start, 0.9f), Vec2f(x_end, 0.9f)); // normal points down
 	ceiling.orientNormalToPoint(Vec2f(0.0f, 0.0f));
 	wallVector.push_back(ceiling);
-	
+
 	// left boundary wall
 	Wall leftWall(Vec2f(x_start, 1.0f), Vec2f(x_start, -1.0f)); // normal points right
 	leftWall.orientNormalToPoint(Vec2f(0.0f, 0.0f)); 
@@ -361,24 +340,24 @@ static void ball_scene() {
 	int num_nodes = 14;
 	float radius = 0.2f;
 	Vec2f center(0.0f, 0.0f);
-	
+
 	// center particle
 	Particle* pCenter = new Particle(center);
 	pVector.push_back(pCenter);
-	
+
 	// ring particles
 	for (int i = 0; i < num_nodes; i++) {
 		float angle = i * 2.0f * M_PI / num_nodes;
 		pVector.push_back(new Particle(center + Vec2f(cos(angle) * radius, sin(angle) * radius)));
 	}
-	
+
 	// use springs to form rigid structure
 	for (int i = 0; i < num_nodes; i++) {
 		int p_idx = i + 1; // start from next prtcl
-		
+
 		// spoke
 		fVector.push_back(new SpringForce(pCenter, pVector[p_idx], radius, spring_ks * 5.0f, spring_kd));
-		
+
 		// connect to every other boundary particle
 		for (int j = i + 1; j < num_nodes; j++) {
 			int other_idx = j + 1;
@@ -427,7 +406,7 @@ static void bridge_scene() {
 	// anchor the ends
 	cVector.push_back(new PointConstraintX(pVector[0], pVector[0]->m_ConstructPos[0]));
 	cVector.push_back(new PointConstraintY(pVector[0], pVector[0]->m_ConstructPos[1]));
-	
+
 	cVector.push_back(new PointConstraintX(pVector[num_bridge_nodes - 1], pVector[num_bridge_nodes - 1]->m_ConstructPos[0]));
 	cVector.push_back(new PointConstraintY(pVector[num_bridge_nodes - 1], pVector[num_bridge_nodes - 1]->m_ConstructPos[1]));
 
@@ -486,27 +465,12 @@ static void init_system(void)
 	}
 }
 
-/*
-----------------------------------------------------------------------
-OpenGL specific drawing routines
-----------------------------------------------------------------------
-*/
-
-
-// Screenshot helper used by the old Project 1 frame-dumping shortcut.
-// Screenshot support:
-// Project 1 already had imageio.cpp/imageio.h for saving PNG frames.  We keep
-// the same interface in Project 2 so the demo-video workflow remains familiar.
-// The implementation has been made CLion-safe: with the old 32-bit course
-// toolchain it can still use libpng, while with CLion's usual 64-bit MinGW it
-// writes PNG files through a small built-in fallback and does not need libpng12.
-
 static void pre_display(void)
 {
 	glViewport(0, 0, win_x, win_y);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	
+
 	if (inFluidScene()) {
 		cameraX = 0.0f;
 		gluOrtho2D(0.0, 1.0, 0.0, 1.0);
@@ -583,18 +547,9 @@ static void draw_constraints(void)
 	}
 }
 
-/*
-----------------------------------------------------------------------
-relates mouse movements to particle toy construction
-----------------------------------------------------------------------
-*/
-
 static void get_from_UI()
 {
 	int i, j;
-	// int size, flag;
-	// int hi, hj;
-	// float x, y;
 	if (!mouse_down[0] && !mouse_down[2] && !mouse_release[0] && !mouse_shiftclick[0] && !mouse_shiftclick[2])
 		return;
 
@@ -611,9 +566,6 @@ static void get_from_UI()
 	if (mouse_down[2])
 	{
 	}
-
-	// hi = (int)((hmx / (float)win_x) * N);
-	// hj = (int)(((win_y - hmy) / (float)win_y) * N);
 
 	if (mouse_release[0])
 	{
@@ -634,12 +586,6 @@ static void remap_GUI()
 		pVector[ii]->m_Force = Vec2f(0.0, 0.0);
 	}
 }
-
-/*
-----------------------------------------------------------------------
-GLUT callback routines
-----------------------------------------------------------------------
-*/
 
 static void key_func(unsigned char key, int x, int y)
 {
@@ -753,7 +699,7 @@ static void key_func(unsigned char key, int x, int y)
 		}
 		printf("Wire Constraint %s\n", enableWire ? "enabled" : "disabled");
 		break;
-	
+
 	case 'a':
 		use_angular_springs_bridge = !use_angular_springs_bridge;
 		init_system();
@@ -762,8 +708,6 @@ static void key_func(unsigned char key, int x, int y)
 
 	case ' ':
 		dsim = !dsim;
-		// Project 1 clears dynamic state when returning to construction mode.
-		// Project 2 keeps the current smoke/solid configuration visible while paused.
 		if (!dsim && !inFluidScene())
 			clear_data();
 		printf("Simulation %s.\n", dsim ? "running" : "paused");
@@ -825,7 +769,7 @@ static void key_func(unsigned char key, int x, int y)
 		printf("6. Mouse Spring Stiffness [mouse_ks] and Damping [mouse_kd] (current: %f; %f)\n", mouse_ks, mouse_kd);
 		printf("7. Touch Force Radius and Magnitude(current: %f; %f)\n", touchSphereRadius, touchSphereMagnitude);
 		printf("Select an option (1-7): ");
-		
+
 		std::cin >> choice;
 
 		if (choice == 1) {
@@ -908,7 +852,7 @@ static void key_func(unsigned char key, int x, int y)
 		printf("d         - Toggle frame dumping\n");
 		printf("space     - Toggle simulation/construction mode\n");
 		printf("q         - Quit\n");
-		
+
 		printf("Fluid scene starts by default. Press h in the fluid scene for Project 2 controls.\n");
 	printf("Current values:\n");
 		printf("  dt: %f\n", dt);
@@ -1111,12 +1055,6 @@ static void display_func(void)
 	post_display();
 }
 
-/*
-----------------------------------------------------------------------
-open_glut_window --- open a glut compatible window and set callbacks
-----------------------------------------------------------------------
-*/
-
 static void open_glut_window(void)
 {
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
@@ -1143,12 +1081,6 @@ static void open_glut_window(void)
 	glutIdleFunc(idle_func);
 	glutDisplayFunc(display_func);
 }
-
-/*
-----------------------------------------------------------------------
-main --- main routine
-----------------------------------------------------------------------
-*/
 
 int main(int argc, char **argv)
 {

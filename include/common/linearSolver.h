@@ -25,15 +25,6 @@ class implicitMatrixWithTrans : public implicitMatrix
   virtual void matTransVecMult(double x[], double r[]) = 0;
 };
 
-
-
-// Solve Ax = b for a symmetric, positive definite matrix A
-// A is represented implicitely by the function "matVecMult"
-// which performs a matrix vector multiple Av and places result in r
-// "n" is the length of the vectors x and b
-// "epsilon" is the error tolerance
-// "steps", as passed, is the maximum number of steps, or 0 (implying MAX_STEPS)
-// Upon completion, "steps" contains the number of iterations taken
 double ConjGrad(int n, implicitMatrix *A, double x[], double b[], 
 		double epsilon,	// how low should we go?
 		int    *steps);
