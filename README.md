@@ -11,7 +11,7 @@ Project 2's implementation is based on Jos Stam's Stable Fluids solver structure
 ## Implemented Features
 
 | Feature | Main files | Runtime control |
-|---|---:|---|---|
+|---|---|---|
 | Stable Fluids base solver: semi-Lagrangian advection, implicit diffusion, pressure projection, Gauss-Seidel relaxation | `FluidSolver2D.*` | Always active |
 | Vorticity confinement | `FluidSolver2D::applyVorticityConfinement` | `z` |
 | Fixed internal objects / arbitrary grid-edge boundaries | `FluidSolver2D.*`, `FluidScene::rebuildSolids` | `f` |
