@@ -1,24 +1,6 @@
-macOS build notes for Project 2:
+Compile under MacOS (untested)
 
-Install Xcode command line tools and, if needed, libpng:
 
-    xcode-select --install
-    brew install libpng
-
-CLion/CMake build:
-
-    Open this folder in CLion and build the `project2` target.
-
-Command-line CMake build:
-
-    mkdir -p build
-    cd build
-    cmake ..
-    cmake --build .
-    ../bin/project2
-
-Makefile build:
-
-    make clean
-    make
-    ./bin/project2
+- Install C/C++ and Makefile Tools packages, follow the instructions on: https://devblogs.microsoft.com/cppblog/now-announcing-makefile-support-in-visual-studio-code/ (Links to an external site.)
+- Using HomeBrew, install 'libpng'
+- In Makefile, replace the non-Windows extra flags for 'CXX_EXTRA_FLAGS = -framework GLUT -framework OpenGL -lpng'
