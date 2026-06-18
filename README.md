@@ -165,8 +165,6 @@ The original Project 1 code used `imageio.cpp` with `libpng12`. Project 2 keeps 
 
 ## Notes on the solver and limitations
 
-This implementation is intended as a course-project implementation, not as a production CFD solver. It keeps Stam's simple cell-centred grid layout for compatibility with the original GDC code, then approximates solid boundaries with marked grid edges and solid cells. A staggered/MAC grid would give cleaner pressure boundary conditions, especially around moving objects, but would require a larger rewrite. The rigid-body collision system uses simple impulse-based separation, matching the assignment statement that resting contact is not required.
-
 The solver keeps Stam's simple cell-centred grid layout for readability and compatibility with the original GDC 2003 code. This is enough for the course demo, but a staggered MAC grid would give more accurate pressure/boundary handling around moving solids. The rigid-body collision model uses impulse-based separation and a restitution threshold, and it does not implement a full resting-contact solver. The free-surface water feature uses marker particles and a boolean water-cell mask, so it is visually useful, but does not strictly conserve volume in the way a full particle level-set or FLIP solver would.
 
 ## References used for the implementation
