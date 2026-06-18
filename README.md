@@ -10,20 +10,20 @@ Project 2's implementation is based on Jos Stam's Stable Fluids solver structure
 
 ## Implemented Features
 
-| Feature | Status | Main files | Runtime control |
+| Feature | Main files | Runtime control |
 |---|---:|---|---|
-| Stable Fluids base solver: semi-Lagrangian advection, implicit diffusion, pressure projection, Gauss-Seidel relaxation | Implemented | `FluidSolver2D.*` | Always active |
-| Vorticity confinement | Implemented | `FluidSolver2D::applyVorticityConfinement` | `z` |
-| Fixed internal objects / arbitrary grid-edge boundaries | Implemented | `FluidSolver2D.*`, `FluidScene::rebuildSolids` | `f` |
-| Moving solid objects dragged by the user | Implemented | `FluidScene::mouse`, `FluidScene::motion`, `RigidBody2D.*` | `m` |
-| Rotating rigid bodies | Implemented | `RigidBody2D::surfaceVelocityAt`, `FluidScene.*` | `r` |
-| Collision impulses between rigid bodies | Implemented | `FluidScene::handleRigidCollisions`, `RigidBody2D::applyImpulse` | `b` |
-| Two-way fluid-solid coupling | Implemented | `FluidScene::applyFluidForcesToBodies` | `o` |
-| Particles and cloth interacting with the fluid | Implemented | `FluidScene::stepTracers`, `FluidScene::stepCloth` | `p` |
-| Temperature and thermal buoyancy | Implemented | `FluidSolver2D::applyBuoyancy` | `t` |
-| Free-surface / water mode with marker particles and zero-pressure air interface | Implemented | `FluidSolver2D::initWater`, `FluidSolver2D::project`, `FluidScene::drawWaterParticles` | `w` |
-| Multi-field visualization: density, velocity, vorticity, pressure, temperature | Implemented | `FluidScene::draw` | `v` |
-| PNG frame dumping | Implemented | `imageio.*`, `ParticleToy.cpp` | `d` |
+| Stable Fluids base solver: semi-Lagrangian advection, implicit diffusion, pressure projection, Gauss-Seidel relaxation | `FluidSolver2D.*` | Always active |
+| Vorticity confinement | `FluidSolver2D::applyVorticityConfinement` | `z` |
+| Fixed internal objects / arbitrary grid-edge boundaries | `FluidSolver2D.*`, `FluidScene::rebuildSolids` | `f` |
+| Moving solid objects dragged by the user | `FluidScene::mouse`, `FluidScene::motion`, `RigidBody2D.*` | `m` |
+| Rotating rigid bodies | `RigidBody2D::surfaceVelocityAt`, `FluidScene.*` | `r` |
+| Collision impulses between rigid bodies | `FluidScene::handleRigidCollisions`, `RigidBody2D::applyImpulse` | `b` |
+| Two-way fluid-solid coupling | `FluidScene::applyFluidForcesToBodies` | `o` |
+| Particles and cloth interacting with the fluid | `FluidScene::stepTracers`, `FluidScene::stepCloth` | `p` |
+| Temperature and thermal buoyancy | `FluidSolver2D::applyBuoyancy` | `t` |
+| Free-surface / water mode with marker particles and zero-pressure air interface | `FluidSolver2D::initWater`, `FluidSolver2D::project`, `FluidScene::drawWaterParticles` | `w` |
+| Multi-field visualization: density, velocity, vorticity, pressure, temperature | `FluidScene::draw` | `v` |
+| PNG frame dumping | `imageio.*`, `ParticleToy.cpp` | `d` |
 
 ## Project Structure
 
