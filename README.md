@@ -175,3 +175,6 @@ The solver keeps Stam's simple cell-centred grid layout for readability and comp
 - STAM, J. 1999. Stable Fluids. In Computer Graphics (SIGGRAPH 1999), ACM, 121-128.
 - STAM, J. 2003. Real-Time Fluid Dynamics for Games. Proceedings of the Game Developer Conference.
 - The original Project 1 particle/cloth framework.
+
+## License
+This project is intended for educational purposes.
