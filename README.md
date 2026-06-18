@@ -1,6 +1,6 @@
 # 2IMV15 Project 2 - Coupled Fluid-Rigid Simulation
 
-Group 7: Komal Jha, Cristiana Cărbunaru, Konstantin Georgiev  
+**Group 7**: Komal Jha, Cristiana Cărbunaru, Konstantin Georgiev  
 Course: 2IMV15 Simulation in Computer Graphics  
 Project: Project 2 - Fluid Simulation
 
