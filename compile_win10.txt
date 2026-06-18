@@ -1,12 +1,12 @@
-Windows build notes for Project 2:
+Compile under windows 10
 
-Recommended: use CLion with MinGW or Visual Studio and configure freeglut/OpenGL.
-The repository keeps the Project 1 Windows include/lib/bin folders for freeglut and libpng.
+- Download from https://sourceforge.net/projects/mingw/ (Links to an external site.) MinGW and install it
+- In MinGW Installation Manager select and install:
+  - mingw32-base
+  - mingw32-gcc-g++
+  - msys-base
+- Add to the Path environment variable the installation locations of MinGW and Msys; typically:  
+  - C:\MinGW\bin and C:\MinGW\msys\1.0\bin
 
-CLion/CMake build:
-1. Open this folder in CLion.
-2. Make sure the freeglut and OpenGL libraries are visible to your selected toolchain.
-3. Build the `project2` target.
-4. Run the executable from the `bin` folder. Keep the DLLs in `bin` next to the executable.
-
-If using MinGW manually, adapt the Makefile Windows branch if your library paths differ.
+- Go in the folder where you extracted the skeleton code, open a shell window and type make clean and then make. 
+  These commands should compile the skeleton project. If compilation succeeded, the executable project2.exe should be in the bin subfolder.
