@@ -629,8 +629,12 @@ void FluidScene::mouse(int button, int state, int x, int y, int winX, int winY) 
     } else if (button == GLUT_RIGHT_BUTTON) {
         m_rightDown = state == GLUT_DOWN;
         if (m_rightDown) {
-            m_solver.addDensityAt(p[0], p[1], m_sourceAmount, 2);
-            m_solver.addTemperatureAt(p[0], p[1], m_heatAmount, 2);
+            const float h = 1.0f / m_solver.gridSize();
+            for (int k = 0; k < 4; ++k) {
+                float yk = p[1] - k * h;
+                m_solver.addDensityAt(p[0], yk, m_sourceAmount, 3);
+                m_solver.addTemperatureAt(p[0], yk, m_heatAmount, 3);
+            }
         }
     }
 }
